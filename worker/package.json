@@ -1,0 +1,15 @@
+{
+  "name": "inventory-event-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MySQL outbox to MongoDB event worker",
+  "main": "worker.js",
+  "scripts": {
+    "start": "node worker.js"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.8",
+    "mongodb": "^7.7.0",
+    "mysql2": "^3.24.6"
+  }
+}
