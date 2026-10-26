@@ -72,6 +72,8 @@ export default function ShipmentsPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [updatingShipmentId, setUpdatingShipmentId] = useState<number | null>(null);
+  const [pendingStatuses, setPendingStatuses] = useState<Record<number, string>>({});
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -228,6 +230,57 @@ export default function ShipmentsPage() {
       setSaving(false);
     }
   }
+
+  
+async function updateShipmentStatus(shipment: Shipment) {
+  const nextStatus = pendingStatuses[shipment.shipment_id];
+
+  if (!nextStatus || nextStatus === shipment.status) {
+    setError("Choose a different status first.");
+    return;
+  }
+
+  setError("");
+  setSuccess("");
+  setUpdatingShipmentId(shipment.shipment_id);
+
+  try {
+    const response = await fetch(
+      `/api/shipments/${shipment.shipment_id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok || !result.ok) {
+      throw new Error(result.message || "Could not update shipment status.");
+    }
+
+    setSuccess(
+      `Shipment ${shipment.shipment_code} updated to ${nextStatus.replaceAll("_", " ")}.`
+    );
+
+    setPendingStatuses((current) => ({
+      ...current,
+      [shipment.shipment_id]: nextStatus,
+    }));
+
+    await loadData();
+  } catch (err) {
+    setError(
+      err instanceof Error
+        ? err.message
+        : "Could not update shipment status."
+    );
+  } finally {
+    setUpdatingShipmentId(null);
+  }
+}
+
 
   const deliveredCount = shipments.filter(
     (shipment) => shipment.status === "DELIVERED"
@@ -405,17 +458,94 @@ export default function ShipmentsPage() {
                     </div>
                   </div>
 
-                  {shipment.notes && (
-                    <div className="mt-4 rounded-lg bg-slate-50 p-3">
-                      <p className="text-xs font-medium text-slate-400">
-                        Notes
-                      </p>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {shipment.notes}
-                      </p>
-                    </div>
-                  )}
-                </article>
+                  
+              {shipment.notes && (
+                <div className="mt-4 rounded-lg bg-slate-50 p-3">
+                  <p className="text-xs font-medium text-slate-400">
+                    Notes
+                  </p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {shipment.notes}
+                  </p>
+                </div>
+              )}
+
+              <div className="mt-5 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
+                <div className="min-w-48 flex-1">
+                  <label
+                    htmlFor={`status-${shipment.shipment_id}`}
+                    className="mb-2 block text-sm font-semibold"
+                  >
+                    Update shipment status
+                  </label>
+
+                  <select
+                    id={`status-${shipment.shipment_id}`}
+                    value={
+                      pendingStatuses[shipment.shipment_id] ??
+                      shipment.status
+                    }
+                    onChange={(event) =>
+                      setPendingStatuses((current) => ({
+                        ...current,
+                        [shipment.shipment_id]: event.target.value,
+                      }))
+                    }
+                    disabled={
+                      updatingShipmentId === shipment.shipment_id
+                    }
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm"
+                  >
+                    {(
+                      {
+                        PREPARING: [
+                          "PREPARING",
+                          "DISPATCHED",
+                          "CANCELLED",
+                        ],
+                        DISPATCHED: [
+                          "DISPATCHED",
+                          "IN_TRANSIT",
+                          "DISCREPANCY",
+                        ],
+                        IN_TRANSIT: [
+                          "IN_TRANSIT",
+                          "DELIVERED",
+                          "DISCREPANCY",
+                        ],
+                        DELIVERED: ["DELIVERED"],
+                        CANCELLED: ["CANCELLED"],
+                        DISCREPANCY: [
+                          "DISCREPANCY",
+                          "IN_TRANSIT",
+                          "DELIVERED",
+                        ],
+                      } as Record<string, string[]>
+                    )[shipment.status]?.map((status) => (
+                      <option key={status} value={status}>
+                        {status.replaceAll("_", " ")}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void updateShipmentStatus(shipment)}
+                  disabled={
+                    updatingShipmentId === shipment.shipment_id ||
+                    (pendingStatuses[shipment.shipment_id] ??
+                      shipment.status) === shipment.status
+                  }
+                  className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {updatingShipmentId === shipment.shipment_id
+                    ? "Updating..."
+                    : "Update Status"}
+                </button>
+              </div>
+            </article>
+
               ))}
             </div>
           )}
