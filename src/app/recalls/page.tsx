@@ -26,6 +26,16 @@ type Batch = {
   sku: string;
 };
 
+type RecallBatch = {
+  recall_id: number;
+  batch_id: number;
+  affected_quantity: number | string;
+  quarantine_quantity: number | string;
+  recovered_quantity: number | string;
+  batch_code: string;
+  product_name: string;
+};
+
 type Recovery = {
   recovery_id: number;
   recall_id: number;
@@ -59,20 +69,39 @@ type ApiResponse = {
   data?: {
     recalls: Recall[];
     batches: Batch[];
+    recallBatches: RecallBatch[];
     recoveries: Recovery[];
   };
 };
 
+const actionTypes = [
+  "QUARANTINED",
+  "RETURNED",
+  "DESTROYED",
+  "RELEASED",
+] as const;
+
 export default function RecallsPage() {
   const [recalls, setRecalls] = useState<Recall[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
+  const [recallBatches, setRecallBatches] = useState<RecallBatch[]>([]);
   const [recoveries, setRecoveries] = useState<Recovery[]>([]);
   const [defects, setDefects] = useState<Defect[]>([]);
+
   const [defectId, setDefectId] = useState("");
   const [recallTitle, setRecallTitle] = useState("");
   const [recallReason, setRecallReason] = useState("");
+
+  const [recoveryRecallId, setRecoveryRecallId] = useState("");
+  const [recoveryBatchId, setRecoveryBatchId] = useState("");
+  const [recoveryQuantity, setRecoveryQuantity] = useState("1");
+  const [recoveryActionType, setRecoveryActionType] =
+    useState<(typeof actionTypes)[number]>("QUARANTINED");
+  const [recoveryNotes, setRecoveryNotes] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [recoverySubmitting, setRecoverySubmitting] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -92,6 +121,7 @@ export default function RecallsPage() {
 
       setRecalls(result.data.recalls);
       setBatches(result.data.batches);
+      setRecallBatches(result.data.recallBatches ?? []);
       setRecoveries(result.data.recoveries);
 
       const defectResponse = await fetch("/api/defects", {
@@ -147,9 +177,7 @@ export default function RecallsPage() {
         throw new Error(result.message || "Could not initiate recall.");
       }
 
-      setNotice(
-        `Recall ${result.data.recallCode} created successfully!`
-      );
+      setNotice(`Recall ${result.data.recallCode} created successfully!`);
       setDefectId("");
       setRecallTitle("");
       setRecallReason("");
@@ -161,6 +189,61 @@ export default function RecallsPage() {
       );
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function recordRecovery() {
+    setError("");
+    setNotice("");
+
+    const quantity = Number(recoveryQuantity);
+
+    if (!recoveryRecallId || !recoveryBatchId) {
+      setError("Select a recall and an associated batch.");
+      return;
+    }
+
+    if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+      setError("Enter a positive whole-number quantity.");
+      return;
+    }
+
+    setRecoverySubmitting(true);
+
+    try {
+      const response = await fetch("/api/recalls/recoveries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recallId: Number(recoveryRecallId),
+          batchId: Number(recoveryBatchId),
+          quantity,
+          actionType: recoveryActionType,
+          notes: recoveryNotes.trim() || undefined,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.ok) {
+        throw new Error(
+          result.message || "Could not record the recovery action."
+        );
+      }
+
+      setNotice("Recovery action recorded successfully.");
+      setRecoveryQuantity("1");
+      setRecoveryNotes("");
+
+      await loadData();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not record the recovery action."
+      );
+    } finally {
+      setRecoverySubmitting(false);
     }
   }
 
@@ -198,10 +281,16 @@ export default function RecallsPage() {
     }
   }
 
-  const openCount = recalls.filter(
+  const availableRecallBatches = recallBatches.filter(
+    (item) => item.recall_id === Number(recoveryRecallId)
+  );
+
+  const openRecalls = recalls.filter(
     (recall) =>
       recall.status === "OPEN" || recall.status === "IN_PROGRESS"
-  ).length;
+  );
+
+  const openCount = openRecalls.length;
 
   const totalAffected = recalls.reduce(
     (sum, recall) => sum + Number(recall.affected_quantity || 0),
@@ -274,19 +363,14 @@ export default function RecallsPage() {
                     (d) => d.defect_id === Number(e.target.value)
                   );
                   if (selected && !recallTitle) {
-                    setRecallTitle(
-                      `Recall for ${selected.batch_code}`
-                    );
+                    setRecallTitle(`Recall for ${selected.batch_code}`);
                   }
                 }}
                 className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3"
               >
                 <option value="">Select a confirmed defect</option>
                 {defects.map((defect) => (
-                  <option
-                    key={defect.defect_id}
-                    value={defect.defect_id}
-                  >
+                  <option key={defect.defect_id} value={defect.defect_id}>
                     {defect.defect_code} — {defect.product_name} /{" "}
                     {defect.batch_code} ({defect.severity})
                   </option>
@@ -356,6 +440,120 @@ export default function RecallsPage() {
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-xl font-bold">Record a recovery action</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Record what happened to affected products. Choose a batch associated with the selected recall.
+          </p>
+
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <label className="text-sm font-medium">
+              Recall
+              <select
+                value={recoveryRecallId}
+                onChange={(e) => {
+                  setRecoveryRecallId(e.target.value);
+                  setRecoveryBatchId("");
+                }}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3"
+              >
+                <option value="">Select a recall</option>
+                {openRecalls.map((recall) => (
+                  <option key={recall.recall_id} value={recall.recall_id}>
+                    {recall.recall_code} — {recall.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="text-sm font-medium">
+              Affected batch
+              <select
+                value={recoveryBatchId}
+                onChange={(e) => setRecoveryBatchId(e.target.value)}
+                disabled={!recoveryRecallId}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3 disabled:bg-slate-100"
+              >
+                <option value="">Select a batch</option>
+                {availableRecallBatches.map((item) => (
+                  <option key={item.batch_id} value={item.batch_id}>
+                    {item.batch_code} — {item.product_name} (affected:{" "}
+                    {item.affected_quantity})
+                  </option>
+                ))}
+              </select>
+              {recoveryRecallId && availableRecallBatches.length === 0 && (
+                <span className="mt-1 block text-xs text-amber-700">
+                  No associated batches were returned for this recall.
+                </span>
+              )}
+            </label>
+
+            <label className="text-sm font-medium">
+              Quantity
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={recoveryQuantity}
+                onChange={(e) => setRecoveryQuantity(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-300 p-3"
+              />
+            </label>
+
+            <label className="text-sm font-medium">
+              Action
+              <select
+                value={recoveryActionType}
+                onChange={(e) =>
+                  setRecoveryActionType(
+                    e.target.value as (typeof actionTypes)[number]
+                  )
+                }
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3"
+              >
+                {actionTypes.map((action) => (
+                  <option key={action} value={action}>
+                    {action.replaceAll("_", " ")}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="text-sm font-medium sm:col-span-2">
+              Notes (optional)
+              <textarea
+                value={recoveryNotes}
+                onChange={(e) => setRecoveryNotes(e.target.value)}
+                maxLength={2000}
+                rows={2}
+                placeholder="Add details about this action"
+                className="mt-1 w-full rounded-lg border border-slate-300 p-3"
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={() => void recordRecovery()}
+              disabled={
+                recoverySubmitting ||
+                loading ||
+                !recoveryRecallId ||
+                !recoveryBatchId
+              }
+              className="w-fit rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {recoverySubmitting ? "Recording..." : "Record action"}
+            </button>
+          </div>
+
+          <p className="mt-4 text-xs leading-5 text-slate-500">
+            Quarantined records units held aside; Released records units removed
+            from quarantine; Returned and Destroyed record units handled through
+            those outcomes. The API validates quantities before saving.
+          </p>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-xl font-bold">Recall register</h2>
           <p className="mt-1 text-sm text-slate-500">
             Recall status and quantity summaries from MySQL.
@@ -389,9 +587,7 @@ export default function RecallsPage() {
                         <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
                           {recall.recall_code}
                         </p>
-                        <h3 className="mt-1 text-lg font-bold">
-                          {recall.title}
-                        </h3>
+                        <h3 className="mt-1 text-lg font-bold">{recall.title}</h3>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <span
@@ -478,8 +674,13 @@ export default function RecallsPage() {
               </thead>
               <tbody>
                 {batches.map((batch) => (
-                  <tr key={batch.batch_id} className="border-b border-slate-100">
-                    <td className="px-3 py-4 font-semibold">{batch.batch_code}</td>
+                  <tr
+                    key={batch.batch_id}
+                    className="border-b border-slate-100"
+                  >
+                    <td className="px-3 py-4 font-semibold">
+                      {batch.batch_code}
+                    </td>
                     <td className="px-3 py-4">{batch.product_name}</td>
                     <td className="px-3 py-4">{batch.sku}</td>
                     <td className="px-3 py-4">
@@ -521,7 +722,9 @@ export default function RecallsPage() {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <h3 className="font-semibold">{item.action_type}</h3>
+                      <h3 className="font-semibold">
+                        {item.action_type.replaceAll("_", " ")}
+                      </h3>
                       <p className="mt-1 text-sm text-slate-500">
                         {item.product_name} · {item.batch_code}
                       </p>

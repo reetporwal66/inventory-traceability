@@ -18,8 +18,14 @@ export async function GET() {
 
     const [recallRows] = await pool.query(`
       SELECT
-        r.recall_id, r.recall_code, r.title, r.reason,
-        r.severity, r.status, r.started_at, r.completed_at,
+        r.recall_id,
+        r.recall_code,
+        r.title,
+        r.reason,
+        r.severity,
+        r.status,
+        r.started_at,
+        r.completed_at,
         COUNT(DISTINCT rb.batch_id) AS batch_count,
         COALESCE(SUM(rb.affected_quantity), 0) AS affected_quantity,
         COALESCE(SUM(rb.quarantine_quantity), 0) AS quarantine_quantity,
@@ -27,8 +33,14 @@ export async function GET() {
       FROM recalls r
       LEFT JOIN recall_batches rb ON rb.recall_id = r.recall_id
       GROUP BY
-        r.recall_id, r.recall_code, r.title, r.reason,
-        r.severity, r.status, r.started_at, r.completed_at
+        r.recall_id,
+        r.recall_code,
+        r.title,
+        r.reason,
+        r.severity,
+        r.status,
+        r.started_at,
+        r.completed_at
       ORDER BY r.started_at DESC
     `);
 
@@ -42,6 +54,22 @@ export async function GET() {
       FROM batches b
       JOIN products p ON p.product_id = b.product_id
       ORDER BY b.batch_code
+    `);
+
+    // Batch associations and quantities for each recall.
+    const [recallBatchRows] = await pool.query(`
+      SELECT
+        rb.recall_id,
+        rb.batch_id,
+        rb.affected_quantity,
+        rb.quarantine_quantity,
+        rb.recovered_quantity,
+        b.batch_code,
+        p.product_name
+      FROM recall_batches rb
+      JOIN batches b ON b.batch_id = rb.batch_id
+      JOIN products p ON p.product_id = b.product_id
+      ORDER BY rb.recall_id, b.batch_code
     `);
 
     const [recoveryRows] = await pool.query(`
@@ -72,6 +100,7 @@ export async function GET() {
       data: {
         recalls: recallRows,
         batches: batchRows,
+        recallBatches: recallBatchRows,
         recoveries: recoveryRows,
       },
     });
@@ -143,8 +172,13 @@ export async function POST(request: Request) {
 
     const [defectRows] = await connection.execute<RowDataPacket[]>(
       `SELECT
-         defect_id, defect_code, batch_id, description,
-         affected_quantity, severity, status
+         defect_id,
+         defect_code,
+         batch_id,
+         description,
+         affected_quantity,
+         severity,
+         status
        FROM defect_reports
        WHERE defect_id = ?
        FOR UPDATE`,
