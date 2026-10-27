@@ -375,23 +375,24 @@ The file `StockSync_Database_Setup.sql` contains the corresponding database defi
 inventory-traceability/
 ├── docs/
 │   ├── StockSync_DBMS_Level3_Report.pdf
-│   ├── dashboard_overview.png
-│   ├── defect_reports.png
-│   ├── inventory.png
-│   ├── mysql_advanced.png
-│   ├── mysql_join.png
-│   ├── mysql_tables_1.png
-│   ├── mysql_tables_2.png
-│   ├── mongo_1.jpeg
-│   ├── mongo_2.jpeg
-│   ├── mongo_3.jpeg
-│   ├── product_recalls_1.png
-│   ├── product_recalls_2.png
-│   ├── product_recalls_3.png
-│   ├── shipments_1.png
-│   ├── shipments_2.png
-│   ├── stock_reservation_1.png
-│   └── stock_reservation_2.png
+│   └── screenshots
+│       ├── dashboard_overview.png
+│       ├── defect_reports.png
+│       ├── inventory.png
+│       ├── mysql_advanced.png
+│       ├── mysql_join.png
+│       ├── mysql_tables_1.png
+│       ├── mysql_tables_2.png
+│       ├── mongo_1.jpeg
+│       ├── mongo_2.jpeg
+│       ├── mongo_3.jpeg
+│       ├── product_recalls_1.png
+│       ├── product_recalls_2.png
+│       ├── product_recalls_3.png
+│       ├── shipments_1.png
+│       ├── shipments_2.png
+│       ├── stock_reservation_1.png
+│       └── stock_reservation_2.png
 ├── src/
 │   └── app/
 ├── worker/
