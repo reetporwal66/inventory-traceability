@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 
-require("dotenv").config();
+require("dotenv").config({ path: ".env.local" });
 
 const mysql = require("mysql2/promise");
 const { MongoClient } = require("mongodb");

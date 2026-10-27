@@ -6,10 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "worker": "node ./worker/worker.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "dotenv": "^18.0.9",
     "jose": "^6.2.13",
     "lucide-react": "^1.61.0",
     "mongodb": "^7.7.0",
