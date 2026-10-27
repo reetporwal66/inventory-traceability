@@ -95,6 +95,17 @@ export async function GET() {
       ORDER BY rr.created_at DESC
     `);
 
+    // Return active warehouses for quarantine and release actions.
+    const [warehouseRows] = await pool.query(`
+      SELECT
+        warehouse_id,
+        warehouse_code,
+        warehouse_name
+      FROM warehouses
+      WHERE status = 'ACTIVE'
+      ORDER BY warehouse_name
+    `);
+
     return NextResponse.json({
       ok: true,
       data: {
@@ -102,6 +113,7 @@ export async function GET() {
         batches: batchRows,
         recallBatches: recallBatchRows,
         recoveries: recoveryRows,
+        warehouses: warehouseRows,
       },
     });
   } catch (error) {
