@@ -43,6 +43,13 @@ export async function POST(request: Request) {
       );
     }
 
+    if (!["ADMIN", "INVENTORY_STAFF", "QUALITY_STAFF"].includes(user.role)) {
+      return NextResponse.json(
+        { ok: false, message: "Invalid account role." },
+        { status: 403 },
+      );
+    }
+
     await createSession({
       userId: Number(user.user_id),
       name: user.full_name,
