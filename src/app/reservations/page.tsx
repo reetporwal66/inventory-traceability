@@ -92,14 +92,18 @@ export default function ReservationsPage() {
   }, []);
 
   useEffect(() => {
-    void loadData();
-  }, [loadData]);
-
-  useEffect(() => {
+    // Initialize the expiry minimum on the client to avoid Date.now() during prerendering.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMinimumExpiry(
       new Date(Date.now() + 60000).toISOString().slice(0, 16)
     );
   }, []);
+
+  useEffect(() => {
+    // Initial data fetch; keep the existing loader.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadData();
+  }, [loadData]);
 
   const selectedBatch = inventory.find(
     (item) => `${item.batch_id}-${item.warehouse_id}` === batchKey

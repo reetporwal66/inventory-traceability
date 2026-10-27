@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import pool from "@/lib/db/mysql";
 import { getSession } from "@/lib/auth";
+import type { RowDataPacket } from "mysql2";
 
 export async function POST(
   request: Request,
@@ -41,7 +42,7 @@ export async function POST(
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
-    const [rows]: any = await connection.query(
+    const [rows] = await connection.query<RowDataPacket[]>(
       "SELECT defect_id, status, reported_by FROM defect_reports WHERE defect_id = ? FOR UPDATE",
       [defectId],
     );

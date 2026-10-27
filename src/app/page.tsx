@@ -16,7 +16,6 @@ import {
   Users,
   Search,
   Bell,
-  ChevronDown,
   TrendingUp,
   AlertTriangle,
   Activity,

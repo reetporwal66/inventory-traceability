@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import pool from "@/lib/db/mysql";
 import { getSession } from "@/lib/auth";
+import type { ResultSetHeader, RowDataPacket } from "mysql2";
 
 export async function GET() {
   try {
@@ -127,7 +128,7 @@ export async function POST(request: Request) {
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
-    const [batchRows]: any = await connection.query(
+    const [batchRows] = await connection.query<RowDataPacket[]>(
       `SELECT batch_id, batch_code, status
        FROM batches WHERE batch_id = ? FOR UPDATE`,
       [batchId],
@@ -152,7 +153,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const [userRows]: any = await connection.query(
+    const [userRows] = await connection.query<RowDataPacket[]>(
       `SELECT user_id FROM app_users
        WHERE user_id = ? AND is_active = 1`,
       [reportedBy],
@@ -169,7 +170,7 @@ export async function POST(request: Request) {
     const defectCode =
       `DEF-${Date.now()}-${Math.floor(Math.random() * 9000 + 1000)}`;
 
-    const [result]: any = await connection.query(
+    const [result] = await connection.query<ResultSetHeader>(
       `INSERT INTO defect_reports
        (defect_code, batch_id, defect_type, description,
         affected_quantity, severity, status, reported_by)
