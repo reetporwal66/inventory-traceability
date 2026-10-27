@@ -1,6 +1,7 @@
 ﻿"use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -54,6 +55,7 @@ function badgeClass(value: string) {
 }
 
 export default function DefectsPage() {
+  const router = useRouter();
   const [batches, setBatches] = useState<Batch[]>([]);
   const [defects, setDefects] = useState<Defect[]>([]);
   const [batchId, setBatchId] = useState("4");
@@ -78,7 +80,7 @@ export default function DefectsPage() {
     fetch("/api/auth/me", { cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) {
-          window.location.href = "/login";
+          router.push("/login");
           return null;
         }
         const result = await response.json();
@@ -86,12 +88,12 @@ export default function DefectsPage() {
       })
       .then((user) => {
         if (user) setCurrentUser(user);
-        else window.location.href = "/login";
+        else router.push("/login");
       })
       .catch(() => {
-        window.location.href = "/login";
+        router.push("/login");
       });
-  }, []);
+  }, [router]);
 
   async function reviewDefect(defectId: number, action: string) {
     setError("");
@@ -117,13 +119,15 @@ export default function DefectsPage() {
       setSuccess(`${defectId}: status changed to ${action.replace(/_/g, " ")}.`);
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not review defect."); alert(err instanceof Error ? err.message : "Could not review defect.");
+      setError(
+        err instanceof Error ? err.message : "Could not review defect."
+      );
     } finally {
       setReviewingId(null);
     }
   }
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError("");
 
@@ -156,11 +160,11 @@ export default function DefectsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [batchId]);
 
   useEffect(() => {
     void loadData();
-  }, []);
+  }, [loadData]);
 
   async function submitDefect(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

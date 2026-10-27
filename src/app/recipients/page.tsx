@@ -57,6 +57,8 @@ export default function RecipientsPage() {
   }, []);
 
   useEffect(() => {
+    // Initial data fetch; keep the existing loader.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadRecipients();
   }, [loadRecipients]);
 

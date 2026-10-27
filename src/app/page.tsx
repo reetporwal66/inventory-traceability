@@ -16,7 +16,6 @@ import {
   Users,
   Search,
   Bell,
-  ChevronDown,
   TrendingUp,
   AlertTriangle,
   Activity,
@@ -272,8 +271,13 @@ export default function Dashboard() {
     loadSummary();
     loadEvents();
 
+    const eventsInterval = window.setInterval(() => {
+      loadEvents();
+    }, 15000);
+
     return () => {
       cancelled = true;
+      window.clearInterval(eventsInterval);
     };
   }, []);
 

@@ -116,6 +116,8 @@ export default function TransfersPage() {
   }, []);
 
   useEffect(() => {
+    // Initial data fetch; keep the existing loader.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadData();
   }, [loadData]);
 

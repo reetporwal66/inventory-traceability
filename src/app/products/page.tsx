@@ -60,6 +60,8 @@ export default function ProductsPage() {
   }
 
   useEffect(() => {
+    // Initial data fetch; keep the existing loader.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadProducts();
   }, []);
 

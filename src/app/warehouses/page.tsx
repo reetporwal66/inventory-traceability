@@ -80,6 +80,8 @@ export default function WarehousesPage() {
   }, []);
 
   useEffect(() => {
+    // Initial data fetch; keep the existing loader.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadInventory();
   }, [loadInventory]);
 

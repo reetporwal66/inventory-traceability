@@ -59,6 +59,8 @@ export default function InventoryPage() {
   }
 
   useEffect(() => {
+    // Initial data fetch; loadInventory manages loading and error state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadInventory();
   }, []);
 
