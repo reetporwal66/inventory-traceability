@@ -1,460 +1,296 @@
 # StockSync — Product Batch Traceability and Recall Management System
 
-## Team:
-Rekha Dhorigol, PES1UG24CS370
-Reet Porwal, PES1UG24CS369
-Section: G
+StockSync is a product batch traceability and recall management system designed to help track products across inventory, warehouses, shipments, and recovery operations. It supports recall creation, affected-batch identification, inventory quarantine, shipment tracing, recovery recording, and event tracking.
 
-StockSync is a web-based inventory traceability and management system designed to track products and supplier batches across warehouses, reservations, transfers, shipments, defect reports, and product recalls. It combines **MySQL** for structured operational data with **MongoDB** for event-document storage, synchronized through a MySQL event outbox.
+The project combines **MySQL** for structured operational data with **MongoDB** for event records. A background worker processes events to support asynchronous event handling.
 
-This project was developed as a **DBMS Level 3 academic project** at PES University, Department of Computer Science and Engineering.
+## Features
 
-**Repository:** https://github.com/reetporwal66/inventory-traceability
+### 1. Recall Management
+- Create and manage product recalls.
+- Maintain recall details, reasons, and statuses.
+- View recall history and recorded recovery actions.
+- Track recall-related operational activity.
 
-**Project Report:** [StockSync DBMS Level 3 Report](docs/StockSync_DBMS_Level3_Report.pdf)
+### 2. Batch Traceability
+- Trace affected product batches.
+- Retrieve associated inventory, warehouse, and shipment information.
+- Identify where affected batches are stored or where they have been dispatched.
+- View relevant batch and shipment details in one place.
 
-## Table of Contents
+### 3. Inventory and Warehouse Tracking
+- Track batch-level inventory across warehouses.
+- Display quantities on hand, reserved, quarantined, and available.
+- Support inventory quarantine during recall operations.
+- Associate inventory records with warehouse details.
 
-- [Key Features](#key-features)
-- [Technology Stack](#technology-stack)
-- [System Architecture](#system-architecture)
-- [Prerequisites](#prerequisites)
-- [Getting Started](#getting-started)
-- [Database Setup](#database-setup)
-- [Running the Application](#running-the-application)
-- [Event Worker](#event-worker)
-- [Validation and Testing](#validation-and-testing)
-- [Application Routes](#application-routes)
-- [Database Design](#database-design)
-- [Project Structure](#project-structure)
-- [Screenshots and Documentation](#screenshots-and-documentation)
-- [Security Notes](#security-notes)
-- [Limitations](#limitations)
+### 4. Shipment Tracking
+- Trace shipments associated with affected batches.
+- Display shipment status, destination, and recipient information.
+- Track dispatched and received quantities.
+- Record shipment discrepancies and notes where applicable.
 
-## Key Features
+### 5. Recovery Management
+- Record recall-related recovery actions.
+- Track recovered quantities and associated batches.
+- Maintain recovery details, timestamps, and notes.
+- Display recorded recovery activity.
 
-- **Dashboard:** Displays inventory summaries and operational information.
-- **Product Management:** Maintains product master information.
-- **Batch Traceability:** Tracks products and supplier batches throughout inventory operations.
-- **Inventory Management:** Displays stock by batch and warehouse, including on-hand, reserved, quarantined, and available quantities.
-- **Stock Reservations:** Supports stock reservation and cancellation while maintaining quantity limits.
-- **Warehouse Transfers:** Records stock transfers between warehouses.
-- **Shipment Tracking:** Tracks shipment progress and dispatched, received, and discrepant quantities.
-- **Defect Reporting:** Records product defects and supports quality-team review.
-- **Recall Management:** Links affected batches to recall cases, quarantines stock, and records recovery actions.
-- **Recipient Traceability:** Connects shipments and batches to recipients to help identify downstream destinations during recalls.
-- **Role-Based Access Control:** Supports role-aware permissions for administrators, inventory staff, and quality staff.
-- **Relational Integrity:** Uses database keys, constraints, indexes, views, stored procedures, and triggers.
-- **Event Synchronization:** Uses a MySQL event outbox to transfer selected inventory events into MongoDB.
+### 6. Event Tracking
+- Store structured operational data in MySQL.
+- Store event documents in MongoDB.
+- Use a background worker to process events.
+- Maintain event records that support operational tracking and debugging.
 
 ## Technology Stack
 
 | Component | Technology |
 |---|---|
-| Frontend and application framework | Next.js, React, TypeScript |
+| Frontend | Next.js, React, TypeScript |
 | Styling | Tailwind CSS |
-| Relational database | MySQL / InnoDB |
-| Document database | MongoDB |
-| Authentication and sessions | `bcryptjs`, `jose` |
-| Input validation | Zod |
-| Database connectivity | `mysql2`, `mongodb` |
-| Code quality | ESLint |
-| Version control | Git and GitHub |
+| Backend/API | Next.js API routes |
+| Relational database | MySQL |
+| Event storage | MongoDB |
+| Background processing | MongoDB event worker |
+| Package management | npm |
+| Language | TypeScript |
 
 ## System Architecture
 
-StockSync uses MySQL as the primary relational database and MongoDB as an event-document store.
+StockSync uses a web application architecture with separate responsibilities for the user interface, API routes, relational data, and event processing.
 
 ```text
-Browser
-   |
-   v
-Next.js / React Application
-   |
-   v
-Next.js API Route Handlers
-   |
-   +--------------------------+
-   |                          |
-   v                          v
-MySQL Database             MongoDB
-   |                       inventory_events
-   |
-   v
-Inventory Triggers
-   |
-   v
-MySQL event_outbox
-   |
-   v
-Event Synchronization Worker
-   |
-   v
-MongoDB events Collection
+User
+  |
+  v
+Next.js Frontend
+  |
+  v
+Next.js API Routes
+  |
+  +----------------------+
+  |                      |
+  v                      v
+MySQL Database      MongoDB Event Store
+                          |
+                          v
+                   Background Worker
 ```
 
-### Database Responsibilities
+**MySQL** stores the application's structured operational records, including recall, batch, inventory, shipment, and recovery information.
 
-**MySQL**
+**MongoDB** stores event documents associated with operational activity.
 
-- Stores structured operational entities and their relationships.
-- Enforces primary keys, foreign keys, unique constraints, and other defined integrity rules.
-- Supports inventory, reservation, transfer, shipment, defect, and recall workflows.
-- Stores event-outbox records for synchronization.
-
-**MongoDB**
-
-- Stores event documents in the `inventory_events` database.
-- Uses the `events` collection for synchronized inventory event records.
-- Supports event-oriented document retrieval independently of the main relational records.
-
-The event synchronization worker is a **one-shot process**. It processes eligible events and exits rather than running continuously as a background service.
+The background worker processes event records separately from the main user-facing application flow.
 
 ## Prerequisites
 
-The following software and services are required:
+Before running the project, ensure that the following are installed and available:
 
 - Node.js and npm
-- MySQL
-- MongoDB
-- Git, for cloning the repository
+- MySQL Server
+- MongoDB Server or a compatible MongoDB deployment
+- Git
 
-Both database services must be running and accessible to the application.
+You should also have access to the required database credentials and configuration values.
 
 ## Getting Started
 
 ### 1. Clone the Repository
 
-Run the following commands in PowerShell or a terminal:
-
-```powershell
+```bash
 git clone https://github.com/reetporwal66/inventory-traceability.git
 cd inventory-traceability
 ```
 
 ### 2. Install Dependencies
 
-```powershell
+```bash
 npm install
 ```
 
 ### 3. Configure Environment Variables
 
-Create a local environment file from the example:
+Create a `.env.local` file in the project root and configure the environment variables required by the application.
 
-**Windows PowerShell**
+Use the variable names expected by the project's database connection modules and worker configuration. Set the appropriate MySQL and MongoDB connection details for your environment.
 
-```powershell
-Copy-Item .env.example .env.local
-```
+Do not commit real database credentials, passwords, or other secrets to the repository.
 
-Configure `.env.local` with the connection details for your local database services. For example:
+### 4. Configure MySQL
 
-```dotenv
-MYSQL_HOST=localhost
-MYSQL_PORT=3306
-MYSQL_USER=your_mysql_username
-MYSQL_PASSWORD=your_mysql_password
-MYSQL_DATABASE=inventory_traceability_db
-MONGODB_URI=mongodb://localhost:27017
-```
+1. Start MySQL Server.
+2. Create or select the database used by the application.
+3. Execute the project's database schema and setup SQL scripts.
+4. Configure the application to connect to the database.
+5. Verify that the required tables and relationships are available.
 
-Replace the example credentials with the values for your local environment. If MongoDB requires authentication, use the appropriate authenticated connection URI.
+Use the SQL files included in the repository, where provided, rather than creating a different schema.
 
-If MySQL is mapped to host port `3307`, set `MYSQL_PORT=3307` instead of `3306`.
+### 5. Configure MongoDB
 
-**Never commit `.env.local`, database passwords, or other secrets to GitHub.**
+1. Start MongoDB or configure access to your MongoDB deployment.
+2. Set the required connection details.
+3. Ensure the event store and collection configuration match the application's implementation.
+4. Verify that the application and background worker can access MongoDB.
 
-## Database Setup
+### 6. Run the Development Server
 
-### MySQL
-
-The repository includes `StockSync_Database_Setup.sql`, which defines the relational database schema and includes demonstration data.
-
-1. Start the MySQL service.
-2. Create or select the intended development database.
-3. Review `StockSync_Database_Setup.sql`.
-4. Execute the script against the intended database.
-5. Confirm that the required tables, constraints, indexes, views, stored procedures, and triggers have been created.
-6. Ensure that the application's MySQL configuration matches the database connection settings.
-
-**Important:** The setup script contains `DROP TABLE IF EXISTS` statements. Running it against an existing database may delete tables and their data. Back up any required data and use a fresh, disposable development database when initializing the project.
-
-The SQL dump may also contain `DEFINER` clauses, such as `root@localhost`. Importing it with a different MySQL account may require appropriate permissions or adjustments to the definers.
-
-### MongoDB
-
-Configure the MongoDB connection in `.env.local`.
-
-| Setting | Value |
-|---|---|
-| Database | `inventory_events` |
-| Collection | `events` |
-
-MongoDB must be running and accessible for event synchronization.
-
-## Running the Application
-
-### Development Server
-
-Start the development server:
-
-```powershell
+```bash
 npm run dev
 ```
 
-Open the application at:
+Open the local URL displayed in the terminal, typically:
 
-http://localhost:3000
+`http://localhost:3000`
 
-### Production Build
+### 7. Run the Background Worker
 
-Create an optimized production build:
+The MongoDB event worker runs separately from the Next.js development server.
 
-```powershell
-npm run build
-```
+Use the worker command defined in the project's `package.json` or the worker's documented entry point. Ensure its environment variables and database connections are configured before starting it.
 
-After a successful build, start the production server:
+## Application Workflows
 
-```powershell
-npm run start
-```
+### Recall Workflow
 
-## Event Worker
+1. Create a recall with the required details.
+2. Identify the affected product batches.
+3. Trace the related inventory and shipments.
+4. Review the available quantity and distribution information.
+5. Record applicable recovery actions.
+6. Review recall history and recovery activity.
 
-StockSync includes a worker that processes eligible records from the MySQL event outbox and synchronizes them with MongoDB.
+### Batch Traceability Workflow
 
-Run the worker from the project root:
+1. Open the traceability interface.
+2. Select or identify the relevant recall.
+3. Review affected batches.
+4. Inspect inventory by warehouse.
+5. Review associated shipments and destinations.
+6. Examine recovery records and other available traceability details.
 
-```powershell
-npm run worker
-```
+### Event Processing Workflow
 
-The worker loads environment variables from `.env.local`, connects to MySQL and MongoDB, processes eligible events, updates delivery status, and exits when the run is complete.
+1. An application operation produces an event where event handling is implemented.
+2. The event is stored in MongoDB.
+3. The background worker processes events according to the worker's implementation.
+4. Processed event records can be inspected for operational tracking and debugging.
 
-The number of events processed depends on the current outbox state. For example, `Found 0 events to deliver` indicates that no eligible pending events were found at that time; it does not by itself indicate a failure.
-
-### Verifying Event Synchronization
-
-In MySQL, inspect the outbox records and their delivery status:
-
-```sql
-SELECT event_id, event_type, delivery_status
-FROM event_outbox
-ORDER BY event_id;
-```
-
-In MongoDB, inspect the number of event documents:
-
-```javascript
-use inventory_events
-db.events.countDocuments({})
-```
-
-To inspect a sample of the documents:
-
-```javascript
-db.events.find().limit(5)
-```
-
-These queries can be used to examine event delivery status and the synchronized event documents.
-
-## Validation and Testing
-
-The following commands and functional checks can be used to evaluate the application.
-
-### 1. Lint
-
-```powershell
-npm run lint
-```
-
-Runs the project's configured ESLint checks.
-
-### 2. Production Build
-
-```powershell
-npm run build
-```
-
-Checks whether the application can be compiled for production, including applicable TypeScript checks.
-
-### 3. Worker and Database Connectivity
-
-```powershell
-npm run worker
-```
-
-Runs the event synchronization worker and checks its ability to connect to both databases and complete an event-delivery run.
-
-When no pending events are available, existing outbox delivery statuses and MongoDB event documents can be inspected separately.
-
-### 4. Functional Test Checklist
-
-| Test Area | Verification |
-|---|---|
-| Authentication | Login functionality and role-based access restrictions |
-| Inventory | Consistency of on-hand, reserved, quarantined, and available quantities |
-| Reservations | Successful valid reservations, rejection of invalid quantities, and correct cancellation behavior |
-| Transfers | Valid source and destination warehouses and transfer quantities |
-| Shipments | Valid shipment status transitions and rejection of invalid transitions |
-| Defects | Defect report creation and review according to permissions |
-| Recalls | Association of affected batches with recalls and recording of quarantine or recovery actions |
-| Recipient traceability | Identification of relevant shipments and recipients |
-| SQL integrity | Enforcement of keys, constraints, and database rules |
-| Event synchronization | Consistency between outbox delivery records and MongoDB event documents |
+The precise event lifecycle depends on the event types and processing logic implemented in the repository.
 
 ## Application Routes
 
-| Route | Purpose |
+The application includes the following API endpoints:
+
+| Endpoint | Purpose |
 |---|---|
-| `/` | Dashboard and operational summary |
-| `/login` | Authentication |
-| `/products` | Product management |
-| `/inventory` | Inventory overview |
-| `/warehouses` | Warehouse information |
-| `/transfers` | Stock transfers |
-| `/reservations` | Stock reservations |
-| `/shipments` | Shipment tracking |
-| `/defects` | Defect reporting and review |
-| `/recalls` | Recall management and recovery |
-| `/recipients` | Recipient traceability |
+| `/api/recalls/history` | Retrieves recall history and associated event information. |
+| `/api/recalls/trace` | Retrieves traceability information for a recall, including related batches and operational records. |
+
+The frontend also includes the following pages:
+
+| Page | Purpose |
+|---|---|
+| `/recalls` | Recall management and history interface. |
+| `/traceability` | Batch, inventory, shipment, and recovery traceability interface. |
+
+Refer to the source files under `src/app/` for the current endpoint implementations and response formats.
 
 ## Database Design
 
-The relational schema contains the following 16 tables:
+### MySQL
 
-1. `app_users`
-2. `products`
-3. `suppliers`
-4. `batches`
-5. `warehouses`
-6. `inventory`
-7. `stock_reservations`
-8. `stock_transfers`
-9. `recipients`
-10. `shipments`
-11. `shipment_items`
-12. `defect_reports`
-13. `recalls`
-14. `recall_batches`
-15. `recall_recoveries`
-16. `event_outbox`
+MySQL is used for structured application data and relational queries.
 
-### Integrity and Advanced SQL
+The application's operational data covers the following areas:
 
-The SQL setup defines relational integrity rules and database objects, including:
+- **Recalls:** Recall identifiers, codes, titles, reasons, statuses, and timestamps.
+- **Batches:** Batch identifiers and codes, product details, supplier information, manufacture and expiry dates, costs, and affected quantities.
+- **Inventory:** Batch and warehouse associations, stock quantities, reserved quantities, quarantined quantities, and available quantities.
+- **Shipments:** Shipment identifiers and codes, status, batch details, source warehouse, destination and recipient details, dispatched and received quantities, and timestamps.
+- **Recoveries:** Recovery identifiers, action types, affected batches, quantities, timestamps, and associated notes.
 
-- Primary keys and foreign keys.
-- Unique constraints for key business identifiers.
-- Check constraints for defined quantity, date, and transfer rules.
-- A generated `inventory.available_quantity` value calculated from on-hand, reserved, and quarantined quantities.
+These records support the application's recall and traceability workflows.
 
-**Reporting views:**
-- `vw_inventory_overview`
-- `vw_low_stock`
-- `vw_recall_recipient_trace`
-- `vw_shipment_discrepancies`
+### MongoDB
 
-**Stored procedures:**
-- `sp_cancel_reservation` — cancels a stock reservation and releases the reserved quantity.
-- `sp_record_quarantine` — records the quarantine of stock associated with a product recall.
-- `sp_reserve_stock` — reserves available stock for an active batch.
-- `sp_transfer_stock` — transfers stock between warehouses.
+MongoDB is used as an event store for event documents generated or handled by the application.
 
-**Inventory triggers:**
-- `trg_inventory_insert_outbox` — creates an outbox event when an inventory record is inserted.
-- `trg_inventory_update_outbox` — creates an outbox event when an inventory record is updated.
+The event store supports event processing and operational inspection independently of the structured relational records.
 
-The file `StockSync_Database_Setup.sql` contains the corresponding database definitions.
+The exact document fields, collection names, indexes, and processing states should be verified against the MongoDB configuration and worker implementation in the repository.
 
 ## Project Structure
+
+The project uses a Next.js application structure. The principal areas include:
 
 ```text
 inventory-traceability/
 ├── docs/
-│   ├── StockSync_DBMS_Level3_Report.pdf
-│   └── screenshots
-│       ├── dashboard_overview.png
-│       ├── defect_reports.png
-│       ├── inventory.png
-│       ├── mysql_advanced.png
-│       ├── mysql_join.png
-│       ├── mysql_tables_1.png
-│       ├── mysql_tables_2.png
-│       ├── mongo_1.jpeg
-│       ├── mongo_2.jpeg
-│       ├── mongo_3.jpeg
-│       ├── product_recalls_1.png
-│       ├── product_recalls_2.png
-│       ├── product_recalls_3.png
-│       ├── shipments_1.png
-│       ├── shipments_2.png
-│       ├── stock_reservation_1.png
-│       └── stock_reservation_2.png
+│   └── screenshots/
 ├── src/
 │   └── app/
-├── worker/
-│   └── worker.js
-├── StockSync_Database_Setup.sql
-├── .env.example
+│       ├── api/
+│       │   └── recalls/
+│       │       ├── history/
+│       │       └── trace/
+│       ├── recalls/
+│       └── traceability/
 ├── package.json
-├── package-lock.json
 └── README.md
 ```
 
-This is a high-level overview of the project structure. The repository contains the complete source code.
+This is a high-level overview of the main application areas, not an exhaustive listing of every project file. Database scripts, connection utilities, worker files, configuration files, and other modules are located in their respective project directories.
 
 ## Screenshots and Documentation
 
-The `docs/` directory contains screenshots and supporting documentation for the application's main workflows and database components.
-
-### Application
-
-- [Dashboard Overview](docs/dashboard_overview.png)
-- [Inventory Overview](docs/inventory.png)
-- [Defect Reports](docs/defect_reports.png)
-
-### Database and Synchronization
-
-- [MySQL Tables — Set 1](docs/mysql_tables_1.png)
-- [MySQL Tables — Set 2](docs/mysql_tables_2.png)
-- [MySQL JOIN Example](docs/mysql_join.png)
-- [MySQL Advanced SQL](docs/mysql_advanced.png)
-- [MongoDB Screenshot 1](docs/mongo_1.jpeg)
-- [MongoDB Screenshot 2](docs/mongo_2.jpeg)
-- [MongoDB Screenshot 3](docs/mongo_3.jpeg)
-
-### Operational Workflows
-
-- [Stock Reservation — Screenshot 1](docs/stock_reservation_1.png)
-- [Stock Reservation — Screenshot 2](docs/stock_reservation_2.png)
-- [Shipments — Screenshot 1](docs/shipments_1.png)
-- [Shipments — Screenshot 2](docs/shipments_2.png)
-- [Product Recalls — Screenshot 1](docs/product_recalls_1.png)
-- [Product Recalls — Screenshot 2](docs/product_recalls_2.png)
-- [Product Recalls — Screenshot 3](docs/product_recalls_3.png)
+The `docs/screenshots/` directory contains screenshots of the application's workflows, database tables and queries, MongoDB event documents, and operational features.
 
 For detailed project documentation, see the [StockSync DBMS Level 3 Project Report](docs/StockSync_DBMS_Level3_Report.pdf).
 
-## Security Notes
+## Testing and Verification
 
-- Store credentials and session secrets in local environment configuration.
-- Do not commit `.env.local` or real database credentials.
-- Use appropriate database accounts and permissions.
-- Apply role permissions to protected operations.
-- Validate inputs and preserve database integrity.
-- Avoid exposing secrets in client-side code, screenshots, logs, or the public repository.
-- Use sample data for local development and demonstration.
+Before considering the application ready for demonstration, verify the following:
+
+- [ ] Dependencies install successfully.
+- [ ] Required environment variables are configured.
+- [ ] MySQL connects successfully and the required schema is present.
+- [ ] MongoDB connects successfully.
+- [ ] The development server starts successfully.
+- [ ] Recall history loads correctly.
+- [ ] Recall traceability data loads correctly.
+- [ ] Inventory, shipment, and recovery information is displayed correctly.
+- [ ] The background worker starts and processes supported events.
+- [ ] Relevant API responses and error cases behave as expected.
+- [ ] Linting and production build complete successfully.
+
+Run the lint and build commands defined in `package.json`. Do not treat a command as passing until it has been executed successfully in the current environment.
+
+## Security Considerations
+
+- Keep database credentials and secrets in environment variables.
+- Do not commit `.env.local` or other files containing real credentials.
+- Validate request inputs before executing database operations.
+- Use parameterized SQL queries to reduce SQL injection risk.
+- Handle database connection errors and unexpected API responses safely.
+- Avoid exposing unnecessary personal, recipient, or supplier information.
+- Restrict database access according to the application's deployment requirements.
+
+These are security considerations for the project; the presence of a recommendation in this section does not itself confirm that every measure has been implemented.
 
 ## Limitations
 
-- The event worker runs as a one-shot process rather than a continuously running background service.
-- Event synchronization depends on valid MySQL and MongoDB configuration and the state of the MySQL outbox.
-- The SQL initialization script is intended for controlled development setup and may drop existing tables.
-- MongoDB is used as an event-document store; the project does not implement vector embeddings or vector similarity search.
+- The completeness of traceability depends on the availability and accuracy of the underlying batch, inventory, and shipment records.
+- Recall and recovery information is only as reliable as the recorded operational data.
+- Event processing depends on MongoDB availability and the correct configuration of the background worker.
+- Database setup and environment configuration are required before the application can run correctly.
+- Production readiness depends on testing, error handling, access controls, and deployment configuration.
 
 ## Project Status
 
-StockSync demonstrates database-backed inventory traceability, relational integrity, stock reservation and transfer workflows, shipment tracking, defect and recall management, and event synchronization between MySQL and MongoDB.
+StockSync is a product batch traceability and recall management application built around a Next.js frontend, API routes, MySQL relational storage, and MongoDB event processing.
+
+The project brings together recall management, batch tracing, inventory visibility, shipment tracking, and recovery records to support recall-related workflows.
+
+The final verified status of linting, production builds, and end-to-end event processing should be confirmed by running the corresponding checks in the current development environment.

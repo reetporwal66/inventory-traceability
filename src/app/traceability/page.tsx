@@ -2,13 +2,106 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 
-type Data = {
-  recall: any;
-  batches: any[];
-  inventory: any[];
-  shipments: any[];
-  recoveries: any[];
+type Recall = {
+  recall_id: number;
+  recall_code: string;
+  title: string;
+  reason: string | null;
+  status: string;
+  started_at: string | null;
+  completed_at?: string | null;
+};
+
+type Batch = {
+  batch_id: number;
+  batch_code: string;
+  product_name: string;
+  sku: string | null;
+  category: string | null;
+  batch_status: string | null;
+  supplier_name: string | null;
+  contact_name: string | null;
+  supplier_email: string | null;
+  supplier_phone: string | null;
+  supplier_address: string | null;
+  manufacture_date: string | null;
+  expiry_date: string | null;
+  unit_cost: number | string | null;
+  affected_quantity: number | string | null;
+  quarantine_quantity: number | string | null;
+  recovered_quantity: number | string | null;
+};
+
+type InventoryItem = {
+  batch_id: number;
+  batch_code: string;
+  warehouse_id: number | null;
+  warehouse_name: string | null;
+  warehouse_code: string | null;
+  city: string | null;
+  quantity_on_hand: number | string | null;
+  quantity_reserved: number | string | null;
+  quantity_quarantined: number | string | null;
+  available_quantity: number | string | null;
+};
+
+type Shipment = {
+  shipment_item_id: number;
+  shipment_code: string;
+  shipment_status: string | null;
+  batch_code: string;
+  source_warehouse: string | null;
+  recipient_name: string | null;
+  organization_name: string | null;
+  delivery_address: string | null;
+  city: string | null;
+  recipient_email: string | null;
+  recipient_phone: string | null;
+  quantity_dispatched: number | string | null;
+  quantity_received: number | string | null;
+  shipment_created_at: string | null;
+  dispatched_at: string | null;
+  delivered_at: string | null;
+  discrepancy_notes: string | null;
+  shipment_notes: string | null;
+};
+
+type Recovery = {
+  recovery_id: number;
+  recall_id: number;
+  batch_id: number;
+  batch_code: string;
+  quantity: number | string;
+  action_type: string;
+  created_at: string | null;
+  warehouse_name: string | null;
+  recipient_name: string | null;
+  recorded_by_name: string | null;
+  notes: string | null;
+};
+
+type TraceabilityData = {
+  recall: Recall;
+  batches: Batch[];
+  inventory: InventoryItem[];
+  shipments: Shipment[];
+  recoveries: Recovery[];
+};
+
+type RecallsApiResponse = {
+  ok: boolean;
+  message?: string;
+  data?: {
+    recalls?: Recall[];
+  };
+};
+
+type TraceabilityApiResponse = {
+  ok: boolean;
+  message?: string;
+  data?: TraceabilityData;
 };
 
 function Section({
@@ -16,7 +109,7 @@ function Section({
   children,
 }: {
   title: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -30,8 +123,10 @@ function Empty({ text }: { text: string }) {
   return <p className="text-sm text-slate-500">{text}</p>;
 }
 
-function date(value: unknown) {
-  if (!value) return "Not recorded";
+function date(value: unknown): string {
+  if (value === null || value === undefined || value === "") {
+    return "Not recorded";
+  }
 
   const parsed = new Date(String(value));
 
@@ -40,7 +135,7 @@ function date(value: unknown) {
     : parsed.toLocaleString();
 }
 
-function display(value: unknown) {
+function display(value: unknown): string {
   return value === null || value === undefined || value === ""
     ? "Not recorded"
     : String(value);
@@ -65,7 +160,7 @@ function Status({
   children,
   tone = "neutral",
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   tone?: "neutral" | "success" | "warning" | "danger";
 }) {
   const styles = {
@@ -85,9 +180,9 @@ function Status({
 }
 
 export default function TraceabilityPage() {
-  const [recalls, setRecalls] = useState<any[]>([]);
+  const [recalls, setRecalls] = useState<Recall[]>([]);
   const [recallId, setRecallId] = useState("");
-  const [data, setData] = useState<Data | null>(null);
+  const [data, setData] = useState<TraceabilityData | null>(null);
   const [loadingRecalls, setLoadingRecalls] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -100,7 +195,8 @@ export default function TraceabilityPage() {
         const response = await fetch("/api/recalls", {
           cache: "no-store",
         });
-        const json = await response.json();
+
+        const json: RecallsApiResponse = await response.json();
 
         if (!response.ok || !json.ok) {
           throw new Error(json.message || "Could not load recalls.");
@@ -110,6 +206,7 @@ export default function TraceabilityPage() {
 
         if (!cancelled) {
           setRecalls(rows);
+
           if (rows.length > 0) {
             setRecallId(String(rows[0].recall_id));
           }
@@ -121,11 +218,13 @@ export default function TraceabilityPage() {
           );
         }
       } finally {
-        if (!cancelled) setLoadingRecalls(false);
+        if (!cancelled) {
+          setLoadingRecalls(false);
+        }
       }
     }
 
-    loadRecalls();
+    void loadRecalls();
 
     return () => {
       cancelled = true;
@@ -134,7 +233,6 @@ export default function TraceabilityPage() {
 
   useEffect(() => {
     if (!recallId) {
-      setData(null);
       return;
     }
 
@@ -150,13 +248,16 @@ export default function TraceabilityPage() {
           `/api/recalls/trace?recallId=${encodeURIComponent(recallId)}`,
           { cache: "no-store" }
         );
-        const json = await response.json();
 
-        if (!response.ok || !json.ok) {
+        const json: TraceabilityApiResponse = await response.json();
+
+        if (!response.ok || !json.ok || !json.data) {
           throw new Error(json.message || "Could not load traceability.");
         }
 
-        if (!cancelled) setData(json.data);
+        if (!cancelled) {
+          setData(json.data);
+        }
       } catch (err) {
         if (!cancelled) {
           setError(
@@ -166,11 +267,13 @@ export default function TraceabilityPage() {
           );
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
-    loadTrace();
+    void loadTrace();
 
     return () => {
       cancelled = true;
@@ -232,6 +335,7 @@ export default function TraceabilityPage() {
           <option value="">
             {loadingRecalls ? "Loading recalls..." : "Choose a recall"}
           </option>
+
           {recalls.map((recall) => (
             <option key={recall.recall_id} value={recall.recall_id}>
               {recall.recall_code} — {recall.title}
@@ -269,18 +373,21 @@ export default function TraceabilityPage() {
                   {display(data.recall.status)}
                 </p>
               </div>
+
               <div className="rounded-xl bg-slate-50 p-4">
                 <p className="text-sm text-slate-500">Linked batches</p>
                 <p className="mt-1 text-lg font-bold">
                   {data.batches.length}
                 </p>
               </div>
+
               <div className="rounded-xl bg-slate-50 p-4">
                 <p className="text-sm text-slate-500">Recorded shipments</p>
                 <p className="mt-1 text-lg font-bold">
                   {data.shipments.length}
                 </p>
               </div>
+
               <div className="rounded-xl bg-slate-50 p-4">
                 <p className="text-sm text-slate-500">Recovery records</p>
                 <p className="mt-1 text-lg font-bold">
@@ -297,9 +404,11 @@ export default function TraceabilityPage() {
               </h3>
               <Status tone="warning">{display(data.recall.status)}</Status>
             </div>
+
             <p className="mt-3 text-sm text-slate-600">
               {data.recall.reason || "No reason recorded"}
             </p>
+
             <p className="mt-2 text-sm text-slate-500">
               Started: {date(data.recall.started_at)}
             </p>
@@ -321,8 +430,9 @@ export default function TraceabilityPage() {
                     </div>
 
                     <p className="mt-1 font-medium">
-                      {batch.product_name} ({batch.sku})
+                      {batch.product_name} ({display(batch.sku)})
                     </p>
+
                     <p className="mt-1 text-sm text-slate-600">
                       Category: {display(batch.category)} · Batch status:{" "}
                       {display(batch.batch_status)}
@@ -350,12 +460,27 @@ export default function TraceabilityPage() {
 
                       <div className="rounded-lg bg-slate-50 p-3">
                         <h4 className="mb-2 font-semibold">Batch details</h4>
-                        <Value label="Manufactured" value={date(batch.manufacture_date)} />
-                        <Value label="Expires" value={date(batch.expiry_date)} />
+                        <Value
+                          label="Manufactured"
+                          value={date(batch.manufacture_date)}
+                        />
+                        <Value
+                          label="Expires"
+                          value={date(batch.expiry_date)}
+                        />
                         <Value label="Unit cost" value={batch.unit_cost} />
-                        <Value label="Affected" value={`${batch.affected_quantity ?? 0} units`} />
-                        <Value label="Quarantined (recall record)" value={`${batch.quarantine_quantity ?? 0} units`} />
-                        <Value label="Recovered (recall record)" value={`${batch.recovered_quantity ?? 0} units`} />
+                        <Value
+                          label="Affected"
+                          value={`${batch.affected_quantity ?? 0} units`}
+                        />
+                        <Value
+                          label="Quarantined (recall record)"
+                          value={`${batch.quarantine_quantity ?? 0} units`}
+                        />
+                        <Value
+                          label="Recovered (recall record)"
+                          value={`${batch.recovered_quantity ?? 0} units`}
+                        />
                       </div>
                     </div>
                   </article>
@@ -373,6 +498,7 @@ export default function TraceabilityPage() {
                   On-hand quantity across returned inventory rows:{" "}
                   <strong>{inventoryTotal} units</strong>
                 </p>
+
                 <div className="space-y-3">
                   {data.inventory.map((item, index) => (
                     <article
@@ -384,19 +510,38 @@ export default function TraceabilityPage() {
                           {item.batch_code} →{" "}
                           {item.warehouse_name || "No warehouse linked"}
                         </p>
-                        <Status tone={item.warehouse_name ? "success" : "warning"}>
-                          {item.warehouse_name ? "Inventory linked" : "Warehouse missing"}
+
+                        <Status
+                          tone={item.warehouse_name ? "success" : "warning"}
+                        >
+                          {item.warehouse_name
+                            ? "Inventory linked"
+                            : "Warehouse missing"}
                         </Status>
                       </div>
+
                       <p className="text-sm text-slate-600">
                         {item.warehouse_code || "No warehouse code"}
                         {item.city ? ` · ${item.city}` : ""}
                       </p>
+
                       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                        <Value label="On hand" value={item.quantity_on_hand} />
-                        <Value label="Reserved" value={item.quantity_reserved} />
-                        <Value label="Quarantined (inventory)" value={item.quantity_quarantined} />
-                        <Value label="Available" value={item.available_quantity} />
+                        <Value
+                          label="On hand"
+                          value={item.quantity_on_hand}
+                        />
+                        <Value
+                          label="Reserved"
+                          value={item.quantity_reserved}
+                        />
+                        <Value
+                          label="Quarantined (inventory)"
+                          value={item.quantity_quarantined}
+                        />
+                        <Value
+                          label="Available"
+                          value={item.available_quantity}
+                        />
                       </div>
                     </article>
                   ))}
@@ -410,13 +555,17 @@ export default function TraceabilityPage() {
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <Status tone="warning">No linked dispatch found</Status>
-                  <span className="font-semibold">Shipment history unavailable</span>
+                  <span className="font-semibold">
+                    Shipment history unavailable
+                  </span>
                 </div>
+
                 <p className="mt-2 text-sm text-amber-900">
                   No non-cancelled shipment items are linked to the recalled
                   batch in the current database. Therefore, this trace cannot
                   identify a downstream recipient from shipment records.
                 </p>
+
                 <p className="mt-2 text-sm text-amber-900">
                   This means the shipment link is missing from the available
                   records; it does not prove that the batch was never dispatched.
@@ -430,7 +579,10 @@ export default function TraceabilityPage() {
                     className="rounded-xl border border-slate-200 p-4"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h3 className="font-bold">{shipment.shipment_code}</h3>
+                      <h3 className="font-bold">
+                        {shipment.shipment_code}
+                      </h3>
+
                       <Status
                         tone={
                           shipment.shipment_status === "DELIVERED"
@@ -441,39 +593,60 @@ export default function TraceabilityPage() {
                         {display(shipment.shipment_status)}
                       </Status>
                     </div>
+
                     <p className="mt-2">
                       Batch: <strong>{shipment.batch_code}</strong>
                     </p>
+
                     <p className="text-sm">
                       Source warehouse: {display(shipment.source_warehouse)}
                     </p>
 
                     <div className="mt-3 rounded-lg bg-slate-50 p-3">
                       <h4 className="font-semibold">Recipient</h4>
+
                       <p>
                         {shipment.recipient_name || "Recipient not recorded"}
                         {shipment.organization_name
                           ? ` · ${shipment.organization_name}`
                           : ""}
                       </p>
+
                       <p className="text-sm">
                         Address: {display(shipment.delivery_address)}
                         {shipment.city ? `, ${shipment.city}` : ""}
                       </p>
+
                       <p className="break-words text-sm">
                         Email: {display(shipment.recipient_email)}
                       </p>
+
                       <p className="text-sm">
                         Phone: {display(shipment.recipient_phone)}
                       </p>
                     </div>
 
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      <Value label="Dispatched quantity" value={shipment.quantity_dispatched} />
-                      <Value label="Received quantity" value={shipment.quantity_received} />
-                      <Value label="Created" value={date(shipment.shipment_created_at)} />
-                      <Value label="Dispatched" value={date(shipment.dispatched_at)} />
-                      <Value label="Delivered" value={date(shipment.delivered_at)} />
+                      <Value
+                        label="Dispatched quantity"
+                        value={shipment.quantity_dispatched}
+                      />
+                      <Value
+                        label="Received quantity"
+                        value={shipment.quantity_received}
+                      />
+                      <Value
+                        label="Created"
+                        value={date(shipment.shipment_created_at)}
+                      />
+                      <Value
+                        label="Dispatched"
+                        value={date(shipment.dispatched_at)}
+                      />
+                      <Value
+                        label="Delivered"
+                        value={date(shipment.delivered_at)}
+                      />
                     </div>
 
                     {shipment.discrepancy_notes && (
@@ -481,6 +654,7 @@ export default function TraceabilityPage() {
                         Discrepancy: {shipment.discrepancy_notes}
                       </p>
                     )}
+
                     {shipment.shipment_notes && (
                       <p className="mt-2 text-sm text-slate-600">
                         Notes: {shipment.shipment_notes}
@@ -506,26 +680,41 @@ export default function TraceabilityPage() {
                       <h3 className="font-bold">
                         {recovery.action_type} — {recovery.batch_code}
                       </h3>
-                      <Status tone="success">{recovery.quantity} units recorded</Status>
+
+                      <Status tone="success">
+                        {recovery.quantity} units recorded
+                      </Status>
                     </div>
+
                     <p className="mt-2 text-sm text-slate-600">
                       {date(recovery.created_at)}
                     </p>
+
                     {recovery.warehouse_name && (
-                      <p className="text-sm">Warehouse: {recovery.warehouse_name}</p>
+                      <p className="text-sm">
+                        Warehouse: {recovery.warehouse_name}
+                      </p>
                     )}
+
                     {recovery.recipient_name && (
-                      <p className="text-sm">Recipient: {recovery.recipient_name}</p>
+                      <p className="text-sm">
+                        Recipient: {recovery.recipient_name}
+                      </p>
                     )}
+
                     {recovery.recorded_by_name && (
-                      <p className="text-sm">Recorded by: {recovery.recorded_by_name}</p>
+                      <p className="text-sm">
+                        Recorded by: {recovery.recorded_by_name}
+                      </p>
                     )}
+
                     <p className="mt-2 text-sm">
                       Destination:{" "}
                       {recovery.warehouse_name ||
                         recovery.recipient_name ||
                         "Not linked to a warehouse or recipient"}
                     </p>
+
                     {recovery.notes && (
                       <p className="mt-2 text-sm">{recovery.notes}</p>
                     )}
@@ -543,6 +732,7 @@ export default function TraceabilityPage() {
               <h2 className="font-bold text-amber-900">
                 Review recovery and inventory quantities
               </h2>
+
               <p className="mt-2 text-sm text-amber-900">
                 Recovery records total {recoveredTotal} units, while the
                 inventory rows report {quarantinedTotal} quarantined units.

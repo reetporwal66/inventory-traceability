@@ -2,19 +2,151 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/db/mysql";
-import { MongoClient } from "mongodb";
+import { MongoClient, type Document } from "mongodb";
+import type { RowDataPacket } from "mysql2";
+
+type EventPayload = Record<string, unknown>;
 
 type TimelineEvent = {
   event_id: string;
   event_type: string;
-  payload: Record<string, any>;
+  payload: EventPayload;
   created_at: string | Date | null;
 };
 
-function asDate(value: any): number {
-  if (!value) return 0;
-  const date = new Date(value).getTime();
+interface RecallRow extends RowDataPacket {
+  recall_id: number;
+  recall_code: string;
+  title: string;
+  reason: string;
+  severity: string;
+  status: string;
+  started_at: string | Date | null;
+  completed_at: string | Date | null;
+  initiated_by: number;
+}
+
+interface BatchRow extends RowDataPacket {
+  batch_id: number;
+  affected_quantity: number;
+  quarantine_quantity: number;
+  recovered_quantity: number;
+  batch_code: string;
+  batch_status: string;
+  product_name: string;
+  sku: string;
+  supplier_name: string | null;
+  contact_name: string | null;
+  supplier_email: string | null;
+  supplier_phone: string | null;
+  supplier_address: string | null;
+}
+
+interface DefectRow extends RowDataPacket {
+  defect_id: number;
+  defect_code: string;
+  defect_type: string;
+  description: string;
+  affected_quantity: number;
+  severity: string;
+  status: string;
+  created_at: string | Date | null;
+  batch_id: number;
+  batch_code: string;
+  product_name: string;
+}
+
+interface ShipmentRow extends RowDataPacket {
+  shipment_item_id: number;
+  quantity_dispatched: number;
+  quantity_received: number | null;
+  discrepancy_notes: string | null;
+  shipment_id: number;
+  shipment_code: string;
+  shipment_status: string;
+  created_at: string | Date | null;
+  dispatched_at: string | Date | null;
+  delivered_at: string | Date | null;
+  shipment_notes: string | null;
+  batch_code: string;
+  product_name: string;
+  source_warehouse: string | null;
+  recipient_name: string | null;
+  organization_name: string | null;
+  recipient_email: string | null;
+  recipient_phone: string | null;
+  delivery_address: string | null;
+  city: string | null;
+}
+
+interface RecoveryRow extends RowDataPacket {
+  recovery_id: number;
+  batch_id: number;
+  quantity: number;
+  action_type: string;
+  notes: string | null;
+  created_at: string | Date | null;
+  batch_code: string;
+  product_name: string;
+  warehouse_name: string | null;
+  recipient_name: string | null;
+  recorded_by_name: string | null;
+}
+
+interface MongoTimelineDocument extends Document {
+  event_id?: string | number;
+  event_type?: string;
+  aggregate_type?: string;
+  aggregate_id?: number;
+  payload?: unknown;
+  source_created_at?: string | Date | null;
+  created_at?: string | Date | null;
+}
+
+function asDate(value: unknown): number {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return 0;
+  }
+
+  const date = new Date(
+    value instanceof Date || typeof value === "string" ||
+      typeof value === "number"
+      ? value
+      : String(value)
+  ).getTime();
+
   return Number.isNaN(date) ? 0 : date;
+}
+
+function toPayload(value: unknown): EventPayload {
+  if (typeof value === "string") {
+    try {
+      return toPayload(JSON.parse(value) as unknown);
+    } catch {
+      return { raw_payload: value };
+    }
+  }
+
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+  ) {
+    return value as EventPayload;
+  }
+
+  return {};
+}
+
+function getRecoveryId(payload: unknown): number {
+  const normalized = toPayload(payload);
+  const value = Number(normalized.recovery_id);
+
+  return Number.isSafeInteger(value) && value > 0 ? value : 0;
 }
 
 export async function GET(request: Request) {
@@ -48,7 +180,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const [recallRows]: any = await pool.execute(
+    const [recallRows] = await pool.execute<RecallRow[]>(
       `SELECT
          recall_id, recall_code, title, reason, severity, status,
          started_at, completed_at, initiated_by
@@ -57,7 +189,7 @@ export async function GET(request: Request) {
       [recallId]
     );
 
-    if (!recallRows.length) {
+    if (recallRows.length === 0) {
       return NextResponse.json(
         { ok: false, message: "Recall not found." },
         { status: 404 }
@@ -70,14 +202,14 @@ export async function GET(request: Request) {
     const addEvent = (
       event_id: string,
       event_type: string,
-      payload: Record<string, any>,
+      payload: EventPayload,
       created_at: string | Date | null
     ) => {
       timeline.push({ event_id, event_type, payload, created_at });
     };
 
     // MySQL is the source of truth for recall and batch details.
-    const [batchRows]: any = await pool.execute(
+    const [batchRows] = await pool.execute<BatchRow[]>(
       `SELECT
          rb.batch_id,
          rb.affected_quantity,
@@ -113,10 +245,8 @@ export async function GET(request: Request) {
       );
     }
 
-    // Only show defects currently marked as initiating a recall.
-    // Joining by batch_id alone would incorrectly include rejected
-    // or unrelated defect reports from the same batch.
-    const [defectRows]: any = await pool.execute(
+    // Only include defects currently marked as initiating a recall.
+    const [defectRows] = await pool.execute<DefectRow[]>(
       `SELECT
          d.defect_id,
          d.defect_code,
@@ -151,9 +281,9 @@ export async function GET(request: Request) {
       );
     }
 
-    // Include every non-cancelled shipment associated with an affected
-    // batch. This is batch traceability, not proof the recall caused dispatch.
-    const [shipmentRows]: any = await pool.execute(
+    // These shipments are associated with affected batches.
+    // Their presence does not prove the recall caused dispatch.
+    const [shipmentRows] = await pool.execute<ShipmentRow[]>(
       `SELECT
          si.shipment_item_id,
          si.quantity_dispatched,
@@ -202,9 +332,9 @@ export async function GET(request: Request) {
       );
     }
 
-    // Recovery actions from MySQL remain visible even if the corresponding
-    // event was never delivered to MongoDB.
-    const [recoveryRows]: any = await pool.execute(
+    // MySQL recovery records remain visible even if their MongoDB
+    // events were never delivered.
+    const [recoveryRows] = await pool.execute<RecoveryRow[]>(
       `SELECT
          rr.recovery_id,
          rr.batch_id,
@@ -228,9 +358,7 @@ export async function GET(request: Request) {
       [recallId]
     );
 
-    // MongoDB contains the event history. MySQL still supplies the
-    // authoritative business records when MongoDB is unavailable.
-    let mongoEvents: any[] = [];
+    let mongoEvents: MongoTimelineDocument[] = [];
     let mongoWarning: string | null = null;
 
     if (
@@ -244,7 +372,9 @@ export async function GET(request: Request) {
 
         mongoEvents = await mongo
           .db(process.env.MONGODB_DATABASE)
-          .collection(process.env.MONGODB_COLLECTION)
+          .collection<MongoTimelineDocument>(
+            process.env.MONGODB_COLLECTION
+          )
           .find({
             aggregate_type: "RECALL",
             aggregate_id: recallId,
@@ -275,8 +405,8 @@ export async function GET(request: Request) {
       (event) => event.event_type === "RECALL_INITIATED"
     );
 
-    // Display a MySQL-backed recall milestone for older recalls that
-    // have no original initiation event in MongoDB.
+    // Provide a MySQL-backed milestone for older recalls without
+    // a corresponding MongoDB initiation event.
     if (!hasInitiationEvent) {
       addEvent(
         `recall-mysql-${recallId}`,
@@ -296,60 +426,26 @@ export async function GET(request: Request) {
     }
 
     for (const event of mongoEvents) {
-      let payload: Record<string, any> = {};
-
-      if (
-        event.payload &&
-        typeof event.payload === "object" &&
-        !Array.isArray(event.payload)
-      ) {
-        payload = event.payload;
-      } else if (typeof event.payload === "string") {
-        try {
-          const parsed = JSON.parse(event.payload);
-          if (
-            parsed &&
-            typeof parsed === "object" &&
-            !Array.isArray(parsed)
-          ) {
-            payload = parsed;
-          }
-        } catch {
-          payload = { raw_payload: event.payload };
-        }
-      }
-
       addEvent(
-        `mongo-${event.event_id}`,
-        event.event_type,
-        payload,
-        event.source_created_at || event.created_at || null
+        `mongo-${String(event.event_id ?? "unknown")}`,
+        event.event_type ?? "UNKNOWN_EVENT",
+        toPayload(event.payload),
+        event.source_created_at ?? event.created_at ?? null
       );
     }
 
     const mongoRecoveryIds = new Set(
       mongoEvents
         .filter(
-          (event) => event.event_type === "RECALL_RECOVERY_RECORDED"
+          (event) =>
+            event.event_type === "RECALL_RECOVERY_RECORDED"
         )
-        .map((event) => {
-          let payload = event.payload;
-
-          if (typeof payload === "string") {
-            try {
-              payload = JSON.parse(payload);
-            } catch {
-              payload = {};
-            }
-          }
-
-          return Number(payload?.recovery_id);
-        })
-        .filter((id) => Number.isSafeInteger(id) && id > 0)
+        .map((event) => getRecoveryId(event.payload))
+        .filter((id) => id > 0)
     );
 
-    // Add MySQL recovery actions only when the same recovery ID
-    // is not already represented by a MongoDB event.
+    // Add MySQL recovery actions only if their ID is not already
+    // represented in MongoDB.
     for (const recovery of recoveryRows) {
       if (mongoRecoveryIds.has(Number(recovery.recovery_id))) {
         continue;
@@ -367,8 +463,7 @@ export async function GET(request: Request) {
       );
     }
 
-    // Do not invent a shipment when no shipment item exists for the
-    // recalled batch.
+    // Do not invent a shipment when no shipment item exists.
     if (shipmentRows.length === 0) {
       addEvent(
         `dispatch-missing-${recallId}`,

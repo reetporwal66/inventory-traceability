@@ -1,11 +1,91 @@
 
 import { NextResponse } from "next/server";
+import type { RowDataPacket } from "mysql2";
 import pool from "@/lib/db/mysql";
 import { getSession } from "@/lib/auth";
 
-export async function GET(request: Request) {
-  let connection: any;
+interface RecallRow extends RowDataPacket {
+  recall_id: number;
+  recall_code: string;
+  title: string;
+  reason: string;
+  status: string;
+  started_at: string | Date | null;
+}
 
+interface RecallBatchRow extends RowDataPacket {
+  recall_id: number;
+  affected_quantity: number;
+  quarantine_quantity: number;
+  recovered_quantity: number;
+  batch_id: number;
+  batch_code: string;
+  batch_status: string;
+  manufacture_date: string | Date | null;
+  expiry_date: string | Date | null;
+  unit_cost: number;
+  product_name: string;
+  sku: string;
+  category: string;
+  supplier_id: number | null;
+  supplier_name: string | null;
+  contact_name: string | null;
+  supplier_email: string | null;
+  supplier_phone: string | null;
+  supplier_address: string | null;
+}
+
+interface InventoryRow extends RowDataPacket {
+  batch_id: number;
+  batch_code: string;
+  warehouse_id: number | null;
+  warehouse_code: string | null;
+  warehouse_name: string | null;
+  city: string | null;
+  quantity_on_hand: number | null;
+  quantity_reserved: number | null;
+  quantity_quarantined: number | null;
+  available_quantity: number | null;
+}
+
+interface ShipmentRow extends RowDataPacket {
+  batch_id: number;
+  batch_code: string;
+  shipment_item_id: number;
+  quantity_dispatched: number;
+  quantity_received: number | null;
+  discrepancy_notes: string | null;
+  shipment_id: number;
+  shipment_code: string;
+  shipment_status: string;
+  shipment_created_at: string | Date | null;
+  dispatched_at: string | Date | null;
+  delivered_at: string | Date | null;
+  shipment_notes: string | null;
+  source_warehouse: string | null;
+  recipient_id: number | null;
+  recipient_name: string | null;
+  organization_name: string | null;
+  recipient_email: string | null;
+  recipient_phone: string | null;
+  delivery_address: string | null;
+  city: string | null;
+}
+
+interface RecoveryRow extends RowDataPacket {
+  recovery_id: number;
+  batch_id: number;
+  batch_code: string;
+  quantity: number;
+  action_type: string;
+  notes: string | null;
+  created_at: string | Date | null;
+  warehouse_name: string | null;
+  recipient_name: string | null;
+  recorded_by_name: string | null;
+}
+
+export async function GET(request: Request) {
   try {
     const user = await getSession();
 
@@ -18,7 +98,10 @@ export async function GET(request: Request) {
 
     if (!["ADMIN", "QUALITY_STAFF"].includes(user.role)) {
       return NextResponse.json(
-        { ok: false, message: "Not allowed to view recall traceability." },
+        {
+          ok: false,
+          message: "Not allowed to view recall traceability.",
+        },
         { status: 403 }
       );
     }
@@ -37,21 +120,22 @@ export async function GET(request: Request) {
       );
     }
 
-    const [recallRows]: any = await pool.execute(
-      `SELECT recall_id, recall_code, title, reason, status, started_at
+    const [recallRows] = await pool.execute<RecallRow[]>(
+      `SELECT
+         recall_id, recall_code, title, reason, status, started_at
        FROM recalls
        WHERE recall_id = ?`,
       [recallId]
     );
 
-    if (!recallRows.length) {
+    if (recallRows.length === 0) {
       return NextResponse.json(
         { ok: false, message: "Recall not found." },
         { status: 404 }
       );
     }
 
-    const [batches]: any = await pool.execute(
+    const [batches] = await pool.execute<RecallBatchRow[]>(
       `SELECT
          rb.recall_id,
          rb.affected_quantity,
@@ -81,7 +165,7 @@ export async function GET(request: Request) {
       [recallId]
     );
 
-    const [inventory]: any = await pool.execute(
+    const [inventory] = await pool.execute<InventoryRow[]>(
       `SELECT
          i.batch_id,
          b.batch_code,
@@ -102,7 +186,7 @@ export async function GET(request: Request) {
       [recallId]
     );
 
-    const [shipments]: any = await pool.execute(
+    const [shipments] = await pool.execute<ShipmentRow[]>(
       `SELECT
          b.batch_id,
          b.batch_code,
@@ -137,7 +221,7 @@ export async function GET(request: Request) {
       [recallId]
     );
 
-    const [recoveries]: any = await pool.execute(
+    const [recoveries] = await pool.execute<RecoveryRow[]>(
       `SELECT
          rr.recovery_id,
          rr.batch_id,

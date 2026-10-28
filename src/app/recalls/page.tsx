@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -74,17 +75,47 @@ type ApiResponse = {
   data?: {
     recalls: Recall[];
     batches: Batch[];
-    recallBatches: RecallBatch[];
+    recallBatches?: RecallBatch[];
     recoveries: Recovery[];
-    warehouses: Warehouse[];
+    warehouses?: Warehouse[];
   };
+};
+
+type DefectApiResponse = {
+  ok: boolean;
+  message?: string;
+  data?: {
+    defects?: Defect[];
+  };
+};
+
+type CreateRecallResponse = {
+  ok: boolean;
+  message?: string;
+  data?: {
+    recallCode: string;
+  };
+};
+
+type RecoveryResponse = {
+  ok: boolean;
+  message?: string;
 };
 
 type HistoryEvent = {
   event_id: string | number;
   event_type: string;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
   created_at: string | Date | null;
+};
+
+type HistoryApiResponse = {
+  ok: boolean;
+  message?: string;
+  data?: HistoryEvent[];
+  meta?: {
+    mongoWarning?: string | null;
+  };
 };
 
 const actionTypes = [
@@ -105,7 +136,9 @@ const timelineTitles: Record<string, string> = {
 };
 
 function formatValue(value: unknown): string {
-  if (value === null || value === undefined || value === "") return "—";
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
 
   if (typeof value === "object") {
     try {
@@ -175,11 +208,12 @@ export default function RecallsPage() {
         cache: "no-store",
       });
 
-      const defectResult = await defectResponse.json();
+      const defectResult: DefectApiResponse =
+        await defectResponse.json();
 
       if (defectResponse.ok && defectResult.ok) {
         setDefects(
-          (defectResult.data.defects as Defect[]).filter(
+          (defectResult.data?.defects ?? []).filter(
             (defect) => defect.status === "CONFIRMED"
           )
         );
@@ -204,7 +238,10 @@ export default function RecallsPage() {
     setHistoryError("");
     setHistoryWarning("");
 
-    if (!recallId) return;
+    if (!recallId) {
+      setHistoryLoading(false);
+      return;
+    }
 
     setHistoryLoading(true);
 
@@ -214,7 +251,7 @@ export default function RecallsPage() {
         { cache: "no-store" }
       );
 
-      const result = await response.json();
+      const result: HistoryApiResponse = await response.json();
 
       if (!response.ok || !result.ok || !Array.isArray(result.data)) {
         throw new Error(result.message || "Could not load recall history.");
@@ -253,13 +290,15 @@ export default function RecallsPage() {
         }),
       });
 
-      const result = await response.json();
+      const result: CreateRecallResponse = await response.json();
 
-      if (!response.ok || !result.ok) {
+      if (!response.ok || !result.ok || !result.data) {
         throw new Error(result.message || "Could not initiate recall.");
       }
 
-      setNotice(`Recall ${result.data.recallCode} created successfully!`);
+      setNotice(
+        `Recall ${result.data.recallCode} created successfully!`
+      );
       setDefectId("");
       setRecallTitle("");
       setRecallReason("");
@@ -319,7 +358,7 @@ export default function RecallsPage() {
         }),
       });
 
-      const result = await response.json();
+      const result: RecoveryResponse = await response.json();
 
       if (!response.ok || !result.ok) {
         throw new Error(
@@ -906,7 +945,9 @@ export default function RecallsPage() {
                 ["Defect description", p.description],
                 [
                   "Defect status",
-                  event.event_type === "DEFECT_REPORTED" ? p.status : undefined,
+                  event.event_type === "DEFECT_REPORTED"
+                    ? p.status
+                    : undefined,
                 ],
                 ["Severity", p.severity],
                 ["Product", p.product_name],
@@ -935,11 +976,16 @@ export default function RecallsPage() {
                 ["Action", p.action_type],
                 ["Warehouse", p.warehouse_name],
                 ["Recorded by", p.recorded_by_name],
-                ["Notes", p.notes ?? p.shipment_notes ?? p.discrepancy_notes],
+                [
+                  "Notes",
+                  p.notes ?? p.shipment_notes ?? p.discrepancy_notes,
+                ],
                 ["Reason", p.reason],
                 [
                   "Recall status",
-                  event.event_type === "RECALL_RECORD" ? p.status : undefined,
+                  event.event_type === "RECALL_RECORD"
+                    ? p.status
+                    : undefined,
                 ],
               ];
 
@@ -956,22 +1002,24 @@ export default function RecallsPage() {
 
                     <span className="text-xs text-slate-500">
                       {formatDate(
-                        event.created_at ? String(event.created_at) : null
+                        event.created_at
+                          ? String(event.created_at)
+                          : null
                       )}
                     </span>
                   </div>
 
-                  {p.title && (
+                  {typeof p.title === "string" && (
                     <p className="mt-2 text-sm font-medium">{p.title}</p>
                   )}
 
-                  {p.message && (
+                  {typeof p.message === "string" && (
                     <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
                       {p.message}
                     </p>
                   )}
 
-                  {p.historical_event_missing && (
+                  {p.historical_event_missing === true && (
                     <p className="mt-2 text-xs text-amber-700">
                       Historical MongoDB event missing; this information is
                       shown from the available MySQL record.
