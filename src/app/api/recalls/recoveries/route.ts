@@ -76,7 +76,8 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        message: "Enter valid recovery details. Notes must not exceed 500 characters.",
+        message:
+          "Enter valid recovery details. Notes must not exceed 500 characters.",
       },
       { status: 400 }
     );
@@ -168,7 +169,10 @@ export async function POST(request: Request) {
         await connection.rollback();
 
         return NextResponse.json(
-          { ok: false, message: "The selected warehouse is not active or does not exist." },
+          {
+            ok: false,
+            message: "The selected warehouse is not active or does not exist.",
+          },
           { status: 409 }
         );
       }
@@ -194,7 +198,8 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             ok: false,
-            message: "No inventory record exists for this batch at the selected warehouse.",
+            message:
+              "No inventory record exists for this batch at the selected warehouse.",
           },
           { status: 409 }
         );
@@ -221,7 +226,8 @@ export async function POST(request: Request) {
           return NextResponse.json(
             {
               ok: false,
-              message: "Insufficient available stock at the selected warehouse.",
+              message:
+                "Insufficient available stock at the selected warehouse.",
             },
             { status: 409 }
           );
@@ -242,7 +248,8 @@ export async function POST(request: Request) {
           return NextResponse.json(
             {
               ok: false,
-              message: "Cannot release more units than are quarantined for this recall.",
+              message:
+                "Cannot release more units than are quarantined for this recall.",
             },
             { status: 409 }
           );
@@ -254,7 +261,8 @@ export async function POST(request: Request) {
           return NextResponse.json(
             {
               ok: false,
-              message: "The selected warehouse does not have enough quarantined stock to release.",
+              message:
+                "The selected warehouse does not have enough quarantined stock to release.",
             },
             { status: 409 }
           );
@@ -288,7 +296,7 @@ export async function POST(request: Request) {
       // record the outcome and update the recall's recovered total.
     }
 
-    await connection.execute<ResultSetHeader>(
+    const [recoveryResult] = await connection.execute<ResultSetHeader>(
       `INSERT INTO recall_recoveries
         (recall_id, batch_id, warehouse_id, recipient_id,
          quantity, action_type, recorded_by, notes)
@@ -311,6 +319,29 @@ export async function POST(request: Request) {
            recovered_quantity = recovered_quantity + ?
        WHERE recall_id = ? AND batch_id = ?`,
       [quarantineDelta, recoveredDelta, recallId, batchId]
+    );
+
+    // Record the recovery event in the same transaction.
+    await connection.execute<ResultSetHeader>(
+      `INSERT INTO event_outbox
+         (event_type, aggregate_type, aggregate_id, payload)
+       VALUES (?, ?, ?, ?)`,
+      [
+        "RECALL_RECOVERY_RECORDED",
+        "RECALL",
+        recallId,
+        JSON.stringify({
+          recall_id: recallId,
+          recovery_id: recoveryResult.insertId,
+          batch_id: batchId,
+          warehouse_id: warehouseId,
+          recipient_id: recipientId,
+          quantity,
+          action_type: selectedAction,
+          actor_id: user.userId,
+          notes: notes || null,
+        }),
+      ]
     );
 
     await connection.commit();

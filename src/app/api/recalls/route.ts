@@ -56,7 +56,6 @@ export async function GET() {
       ORDER BY b.batch_code
     `);
 
-    // Batch associations and quantities for each recall.
     const [recallBatchRows] = await pool.query(`
       SELECT
         rb.recall_id,
@@ -280,6 +279,33 @@ export async function POST(request: Request) {
        SET status = 'RECALLED'
        WHERE batch_id = ?`,
       [defect.batch_id]
+    );
+
+    // Record the recall event in the transactional outbox.
+    // The worker can deliver this event to MongoDB after commit.
+    await connection.execute<ResultSetHeader>(
+      `INSERT INTO event_outbox
+         (event_type, aggregate_type, aggregate_id, payload)
+       VALUES (?, ?, ?, ?)`,
+      [
+        "RECALL_INITIATED",
+        "RECALL",
+        recallId,
+        JSON.stringify({
+          recall_id: recallId,
+          recall_code: recallCode,
+          title,
+          reason: `${reason}\nDefect: ${defect.defect_code}`,
+          defect_id: defectId,
+          defect_code: defect.defect_code,
+          batch_id: defect.batch_id,
+          batch_code: batch.batch_code,
+          affected_quantity: defect.affected_quantity,
+          severity: defect.severity,
+          status: "OPEN",
+          actor_id: user.userId,
+        }),
+      ]
     );
 
     await connection.commit();
