@@ -272,6 +272,25 @@ export async function POST(request: Request) {
         { statusCode: 409 }
       );
     }
+    await connection.execute(
+  `INSERT INTO event_outbox
+    (event_type, aggregate_type, aggregate_id, payload)
+   VALUES (?, ?, ?, ?)`,
+  [
+    "SHIPMENT_CREATED",
+    "SHIPMENT",
+    shipmentResult.insertId,
+    JSON.stringify({
+      shipment_id: shipmentResult.insertId,
+      shipment_code: shipmentCode,
+      recipient_id: recipientId,
+      source_warehouse_id: warehouseId,
+      batch_id: batchId,
+      quantity,
+      status: "PREPARING",
+    }),
+  ]
+);
 
     await connection.commit();
 

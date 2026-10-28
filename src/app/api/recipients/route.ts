@@ -2,6 +2,8 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db/mysql";
 import { getSession } from "@/lib/auth";
+import type { ResultSetHeader } from "mysql2";
+import type { PoolConnection } from "mysql2/promise";
 
 export async function GET() {
   try {
@@ -50,6 +52,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  let connection: PoolConnection | undefined;
+
   try {
     const user = await getSession();
 
@@ -115,7 +119,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const [result] = await pool.execute(
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [result] = await connection.execute<ResultSetHeader>(
       `INSERT INTO recipients
         (recipient_name, organization_name, email, phone, delivery_address, city)
        VALUES (?, ?, ?, ?, ?, ?)`,
@@ -129,21 +136,49 @@ export async function POST(request: Request) {
       ]
     );
 
-    const insertResult = result as { insertId: number };
+    const recipientId = result.insertId;
+
+    await connection.execute(
+      `INSERT INTO event_outbox
+        (event_type, aggregate_type, aggregate_id, payload)
+       VALUES (?, ?, ?, ?)`,
+      [
+        "RECIPIENT_CREATED",
+        "RECIPIENT",
+        recipientId,
+        JSON.stringify({
+          recipient_id: recipientId,
+          recipient_name: recipientName,
+          organization_name: organizationName || null,
+          delivery_address: deliveryAddress,
+          city: city || null,
+        }),
+      ]
+    );
+
+    await connection.commit();
 
     return NextResponse.json(
       {
         ok: true,
         message: "Recipient created successfully.",
-        data: { recipientId: insertResult.insertId },
+        data: { recipientId },
       },
       { status: 201 }
     );
   } catch (error) {
+    if (connection) {
+      await connection.rollback().catch((rollbackError) => {
+        console.error("Recipient rollback failed:", rollbackError);
+      });
+    }
+
     console.error("Recipients POST failed:", error);
     return NextResponse.json(
       { ok: false, message: "Could not create recipient." },
       { status: 500 }
     );
+  } finally {
+    connection?.release();
   }
 }
