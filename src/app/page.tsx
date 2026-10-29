@@ -57,7 +57,8 @@ type ActivityEvent = {
 const navigation = [
   { label: "Overview", href: "/", icon: LayoutDashboard },
   { label: "Inventory", href: "/inventory", icon: Boxes },
-  { label: "Products & Batches", href: "/products", icon: Package },
+  { label: "Products", href: "/products", icon: Package },
+  { label: "Batches", href: "/batches", icon: Boxes },
   { label: "Warehouses", href: "/warehouses", icon: Warehouse },
   { label: "Stock Transfers", href: "/transfers", icon: ArrowLeftRight },
   { label: "Reservations", href: "/reservations", icon: ClipboardList },
