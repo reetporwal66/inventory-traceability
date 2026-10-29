@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Package, RefreshCw, Plus, Boxes } from "lucide-react";
+import { ArrowLeft, RefreshCw, Plus, Boxes } from "lucide-react";
 
 type Product = {
   productId: number;
