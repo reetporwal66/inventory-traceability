@@ -85,7 +85,6 @@ export async function POST(request: Request) {
 
   const selectedAction = actionType as ActionType;
 
-  // Quarantine and release must identify the physical warehouse.
   if (
     (selectedAction === "QUARANTINED" ||
       selectedAction === "RELEASED") &&
@@ -101,10 +100,36 @@ export async function POST(request: Request) {
   }
 
   let connection;
+  let transactionStarted = false;
 
   try {
     connection = await pool.getConnection();
+
+    // QUARANTINED is handled entirely by the stored procedure.
+    // The procedure manages its own transaction.
+    if (selectedAction === "QUARANTINED") {
+      await connection.execute(
+        `CALL sp_record_quarantine(?, ?, ?, ?, ?, ?, ?)`,
+        [
+          recallId,
+          batchId,
+          warehouseId,
+          recipientId,
+          quantity,
+          user.userId,
+          notes || null,
+        ]
+      );
+
+      return NextResponse.json(
+        { ok: true, message: "Recovery action recorded successfully." },
+        { status: 201 }
+      );
+    }
+
+    // Other recovery actions retain their existing API transaction.
     await connection.beginTransaction();
+    transactionStarted = true;
 
     const [rows] = await connection.execute<RowDataPacket[]>(
       `SELECT
@@ -125,6 +150,7 @@ export async function POST(request: Request) {
 
     if (!item) {
       await connection.rollback();
+      transactionStarted = false;
 
       return NextResponse.json(
         { ok: false, message: "Recall and batch combination not found." },
@@ -138,6 +164,7 @@ export async function POST(request: Request) {
       )
     ) {
       await connection.rollback();
+      transactionStarted = false;
 
       return NextResponse.json(
         { ok: false, message: "This recall is no longer active." },
@@ -152,11 +179,7 @@ export async function POST(request: Request) {
     let quarantineDelta = 0;
     let recoveredDelta = 0;
 
-    if (
-      selectedAction === "QUARANTINED" ||
-      selectedAction === "RELEASED"
-    ) {
-      // warehouseId is guaranteed non-null by the validation above.
+    if (selectedAction === "RELEASED") {
       const [warehouseRows] = await connection.execute<RowDataPacket[]>(
         `SELECT warehouse_id
          FROM warehouses
@@ -167,6 +190,7 @@ export async function POST(request: Request) {
 
       if (warehouseRows.length === 0) {
         await connection.rollback();
+        transactionStarted = false;
 
         return NextResponse.json(
           {
@@ -194,6 +218,7 @@ export async function POST(request: Request) {
 
       if (!inventory) {
         await connection.rollback();
+        transactionStarted = false;
 
         return NextResponse.json(
           {
@@ -207,79 +232,47 @@ export async function POST(request: Request) {
 
       const inventoryQuarantined = Number(inventory.quantity_quarantined);
 
-      if (selectedAction === "QUARANTINED") {
-        if (quantity > affected - quarantined - recovered) {
-          await connection.rollback();
+      if (quantity > quarantined) {
+        await connection.rollback();
+        transactionStarted = false;
 
-          return NextResponse.json(
-            {
-              ok: false,
-              message: "Quantity exceeds the remaining affected units.",
-            },
-            { status: 409 }
-          );
-        }
-
-        if (quantity > Number(inventory.available_quantity)) {
-          await connection.rollback();
-
-          return NextResponse.json(
-            {
-              ok: false,
-              message:
-                "Insufficient available stock at the selected warehouse.",
-            },
-            { status: 409 }
-          );
-        }
-
-        await connection.execute<ResultSetHeader>(
-          `UPDATE inventory
-           SET quantity_quarantined = quantity_quarantined + ?
-           WHERE inventory_id = ?`,
-          [quantity, inventory.inventory_id]
+        return NextResponse.json(
+          {
+            ok: false,
+            message:
+              "Cannot release more units than are quarantined for this recall.",
+          },
+          { status: 409 }
         );
-
-        quarantineDelta = quantity;
-      } else {
-        if (quantity > quarantined) {
-          await connection.rollback();
-
-          return NextResponse.json(
-            {
-              ok: false,
-              message:
-                "Cannot release more units than are quarantined for this recall.",
-            },
-            { status: 409 }
-          );
-        }
-
-        if (quantity > inventoryQuarantined) {
-          await connection.rollback();
-
-          return NextResponse.json(
-            {
-              ok: false,
-              message:
-                "The selected warehouse does not have enough quarantined stock to release.",
-            },
-            { status: 409 }
-          );
-        }
-
-        await connection.execute<ResultSetHeader>(
-          `UPDATE inventory
-           SET quantity_quarantined = quantity_quarantined - ?
-           WHERE inventory_id = ?`,
-          [quantity, inventory.inventory_id]
-        );
-
-        quarantineDelta = -quantity;
       }
+
+      if (quantity > inventoryQuarantined) {
+        await connection.rollback();
+        transactionStarted = false;
+
+        return NextResponse.json(
+          {
+            ok: false,
+            message:
+              "The selected warehouse does not have enough quarantined stock to release.",
+          },
+          { status: 409 }
+        );
+      }
+
+      await connection.execute<ResultSetHeader>(
+        `UPDATE inventory
+         SET quantity_quarantined = quantity_quarantined - ?
+         WHERE inventory_id = ?`,
+        [quantity, inventory.inventory_id]
+      );
+
+      quarantineDelta = -quantity;
     } else {
+      // RETURNED and DESTROYED retain their existing behavior.
       if (quantity > affected - recovered) {
         await connection.rollback();
+        transactionStarted = false;
 
         return NextResponse.json(
           {
@@ -291,9 +284,6 @@ export async function POST(request: Request) {
       }
 
       recoveredDelta = quantity;
-
-      // RETURNED and DESTROYED retain their existing behavior:
-      // record the outcome and update the recall's recovered total.
     }
 
     const [recoveryResult] = await connection.execute<ResultSetHeader>(
@@ -321,7 +311,6 @@ export async function POST(request: Request) {
       [quarantineDelta, recoveredDelta, recallId, batchId]
     );
 
-    // Record the recovery event in the same transaction.
     await connection.execute<ResultSetHeader>(
       `INSERT INTO event_outbox
          (event_type, aggregate_type, aggregate_id, payload)
@@ -345,17 +334,37 @@ export async function POST(request: Request) {
     );
 
     await connection.commit();
+    transactionStarted = false;
 
     return NextResponse.json(
       { ok: true, message: "Recovery action recorded successfully." },
       { status: 201 }
     );
   } catch (error) {
-    if (connection) {
+    if (connection && transactionStarted) {
       await connection.rollback().catch(() => undefined);
     }
 
     console.error("Recall recovery failed:", error);
+
+    const dbError = error as {
+      code?: string;
+      errno?: number;
+      sqlMessage?: string;
+    };
+
+    if (
+      dbError.code === "ER_SIGNAL_EXCEPTION" ||
+      dbError.errno === 1644
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message: dbError.sqlMessage || "The recovery action could not be completed.",
+        },
+        { status: 409 }
+      );
+    }
 
     return NextResponse.json(
       { ok: false, message: "Could not record recovery." },

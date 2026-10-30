@@ -46,7 +46,7 @@ export default function ReservationsPage() {
   const [minimumExpiry, setMinimumExpiry] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -174,20 +174,25 @@ export default function ReservationsPage() {
     }
   }
 
-  async function cancelReservation(reservationId: number) {
+  async function deleteReservation(reservationId: number) {
     const confirmed = window.confirm(
-      `Cancel reservation #${reservationId}? Its reserved stock will be released.`
+      `Permanently delete reservation #${reservationId}? ${
+        reservations.find((item) => item.reservation_id === reservationId)
+          ?.status === "ACTIVE"
+          ? "Its reserved stock will be released."
+          : "This reservation will be removed from the database."
+      } This action cannot be undone.`
     );
 
     if (!confirmed) return;
 
     setError("");
     setSuccess("");
-    setCancellingId(reservationId);
+    setDeletingId(reservationId);
 
     try {
       const response = await fetch("/api/reservations", {
-        method: "PATCH",
+        method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reservationId }),
       });
@@ -195,17 +200,17 @@ export default function ReservationsPage() {
       const result = await response.json();
 
       if (!response.ok || !result.ok) {
-        throw new Error(result.message || "Could not cancel reservation.");
+        throw new Error(result.message || "Could not delete reservation.");
       }
 
-      setSuccess(result.message || "Reservation cancelled successfully.");
+      setSuccess(result.message || "Reservation deleted successfully.");
       await loadData();
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Could not cancel reservation."
+        err instanceof Error ? err.message : "Could not delete reservation."
       );
     } finally {
-      setCancellingId(null);
+      setDeletingId(null);
     }
   }
 
@@ -261,7 +266,7 @@ export default function ReservationsPage() {
           <button
             type="button"
             onClick={() => void loadData()}
-            disabled={loading || saving || cancellingId !== null}
+            disabled={loading || saving || deletingId !== null}
             className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold shadow-sm hover:bg-slate-100 disabled:opacity-50"
           >
             {loading ? "Refreshing..." : "Refresh"}
@@ -489,26 +494,24 @@ export default function ReservationsPage() {
                       </div>
                     </div>
 
-                    {item.status === "ACTIVE" && (
-                      <div className="mt-4 flex justify-end border-t border-slate-100 pt-4">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void cancelReservation(item.reservation_id)
-                          }
-                          disabled={
-                            saving ||
-                            loading ||
-                            cancellingId !== null
-                          }
-                          className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {cancellingId === item.reservation_id
-                            ? "Cancelling..."
-                            : "Cancel reservation"}
-                        </button>
-                      </div>
-                    )}
+                    <div className="mt-4 flex justify-end border-t border-slate-100 pt-4">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void deleteReservation(item.reservation_id)
+                        }
+                        disabled={
+                          saving ||
+                          loading ||
+                          deletingId !== null
+                        }
+                        className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {deletingId === item.reservation_id
+                          ? "Deleting..."
+                          : "Delete reservation"}
+                      </button>
+                    </div>
                   </article>
                 ))}
               </div>

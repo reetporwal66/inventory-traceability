@@ -234,3 +234,69 @@ export async function PATCH(request: Request) {
     );
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    const user = await getSession();
+
+    if (!user) {
+      return NextResponse.json(
+        { ok: false, message: "Please sign in." },
+        { status: 401 }
+      );
+    }
+
+    if (user.role === "QUALITY_STAFF") {
+      return NextResponse.json(
+        { ok: false, message: "Your role cannot delete reservations." },
+        { status: 403 }
+      );
+    }
+
+    const body = await request.json();
+    const reservationId = Number(body.reservationId);
+
+    if (!Number.isSafeInteger(reservationId) || reservationId <= 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message: "Choose a valid reservation.",
+        },
+        { status: 400 }
+      );
+    }
+
+    await pool.query("CALL sp_delete_reservation(?, ?, ?)", [
+      reservationId,
+      user.userId,
+      "Deleted through StockSync UI",
+    ]);
+
+    return NextResponse.json({
+      ok: true,
+      message: `Reservation #${reservationId} deleted successfully.`,
+    });
+  } catch (error) {
+    console.error("Reservations DELETE failed:", error);
+
+    const message =
+      error instanceof Error ? error.message : "Deletion failed.";
+
+    const notFound = message.includes("Reservation does not exist");
+
+    const conflict =
+      notFound ||
+      message.includes("Reserved quantity is inconsistent") ||
+      message.includes("Inventory row does not exist");
+
+    return NextResponse.json(
+      {
+        ok: false,
+        message: conflict
+          ? message
+          : "Could not delete reservation. Check the server terminal for details.",
+      },
+      { status: notFound ? 404 : conflict ? 409 : 500 }
+    );
+  }
+}
